@@ -12,6 +12,8 @@ import SwiftUI
     @Published private(set) var speed: Float
     @Published private(set) var holding = false
     @Published private(set) var holdCount = 0
+    @Published private(set) var lastHoldMilliseconds = 0
+    private var holdStarted: TimeInterval?
     private var fixedSpeed: Float
     private let defaults: UserDefaults
     private var itemObservation: NSKeyValueObservation?
@@ -110,11 +112,14 @@ import SwiftUI
     }
     func hold() {
         guard ready, player.timeControlStatus == .playing, !holding else { return }
-        holding = true; holdCount += 1
+        holding = true; holdCount += 1; lastHoldMilliseconds = 0; holdStarted = ProcessInfo.processInfo.systemUptime
         let saved = defaults.float(forKey: "playback.holdSpeed")
         applySpeed(max(fixedSpeed, [Float(2), 2.5, 3].contains(saved) ? saved : 2))
     }
-    func releaseHold() { holding = false; applySpeed(fixedSpeed) }
+    func releaseHold() {
+        if let holdStarted { lastHoldMilliseconds = max(0, Int((ProcessInfo.processInfo.systemUptime - holdStarted) * 1000)); self.holdStarted = nil }
+        holding = false; applySpeed(fixedSpeed)
+    }
     func seek(_ value: Double) {
         guard ready, duration > 0, value.isFinite else { return }
         releaseHold(); player.seek(to: CMTime(seconds: min(max(0, value), duration), preferredTimescale: 600))

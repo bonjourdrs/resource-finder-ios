@@ -211,6 +211,7 @@ enum PlayerPanel: String, Identifiable { case speed, episodes, lines, more, cast
                     Text(model.ready && model.position >= 0.5 ? "已解码并推进" : "等待解码").font(.caption).accessibilityIdentifier("decode_check")
                     Text("\(model.speed.formatted())×").accessibilityIdentifier("speed_check")
                     Text(String(model.holdCount)).accessibilityIdentifier("hold_count")
+                    Text(String(model.lastHoldMilliseconds)).accessibilityIdentifier("hold_ms")
                 }
                 #endif
             }.padding(20)

@@ -130,6 +130,7 @@ final class FlowTests: XCTestCase {
         let fixed = app.staticTexts["speed_check"].label
         gesture.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.45)).press(forDuration: 1.1)
         XCTAssertEqual(app.staticTexts["hold_count"].label, "1")
+        XCTAssertGreaterThanOrEqual(Int(app.staticTexts["hold_ms"].label) ?? 0, 350)
         XCTAssertFalse(app.staticTexts["hold_feedback"].exists)
         XCTAssertEqual(app.staticTexts["speed_check"].label, fixed)
         screenshot("10-hold-released")
