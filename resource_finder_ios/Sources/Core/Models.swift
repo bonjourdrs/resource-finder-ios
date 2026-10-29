@@ -60,6 +60,13 @@ struct PlaybackSource {
     var kind: MediaKind = .progressive
     var offline: Bool = false
     var offlineKeys: URL?
+    var headers: [String: String] = [:]
+    var requestHeaders: [String: String] {
+        var value = headers
+        if let userAgent { value["User-Agent"] = userAgent }
+        return value
+    }
+    var requiresRelay: Bool { !headers.isEmpty }
 }
 enum MediaKind: String, Codable, Sendable { case hls, progressive }
 struct MediaDescriptor: Decodable {
@@ -85,18 +92,20 @@ struct MediaDescriptor: Decodable {
         }
         return value
     }
-    // AVFoundation publicly supports a per-asset user agent. Other required
-    // headers need an independently validated adapter; never silently omit them.
-    func userAgent() throws -> String? {
-        var agent: String?
+    func mediaHeaders() throws -> [String: String] {
+        var result: [String: String] = [:]
+        let excluded = Set(["host", "connection", "content-length", "transfer-encoding", "keep-alive", "proxy-authorization", "proxy-authenticate", "te", "trailer", "upgrade", "x-device-id"])
         for (key, value) in headers ?? [:] {
             let lower = key.lowercased()
-            if lower.hasPrefix("x-jp-") || lower == "x-device-id" || lower == "host" { continue }
-            guard lower == "user-agent" else { throw CatalogError.unsupportedHeaders }
-            agent = value
+            if lower.hasPrefix("x-jp-") || excluded.contains(lower) { continue }
+            guard !key.isEmpty, key.utf8.allSatisfy({ (33...126).contains($0) && ![40,41,60,62,64,44,59,58,92,34,47,91,93,63,61,123,125].contains($0) }),
+                  !value.contains("\r"), !value.contains("\n"), value.utf8.count <= 8192 else { throw CatalogError.unsupportedHeaders }
+            result[key] = value
         }
-        return agent
+        return result
     }
+    func userAgent() throws -> String? { try mediaHeaders().first { $0.key.lowercased() == "user-agent" }?.value }
+
 }
 enum CatalogError: LocalizedError {
     case invalidRequest, invalidResponse, mismatchedMedia, unsupportedMedia, unsupportedHeaders
@@ -108,7 +117,7 @@ enum CatalogError: LocalizedError {
         case .invalidResponse: return "接口响应校验失败，请稍后重试"
         case .mismatchedMedia: return "返回的线路或剧集不一致，请重新选择"
         case .unsupportedMedia: return "该线路使用的格式暂不支持，请换一条线路"
-        case .unsupportedHeaders: return "该线路需要额外媒体请求头，iOS 基础版暂不支持，请换线路"
+        case .unsupportedHeaders: return "该线路的媒体请求头无效，请换线路"
         case .secureStorage, .keychain(_): return "无法安全保存本机访客身份，请重新启动应用"
         case .http(401): return "接口验证失败，请检查设备日期和时间"
         case .http(403): return "该线路拒绝访问，可能受线路或地区限制，请换线路"

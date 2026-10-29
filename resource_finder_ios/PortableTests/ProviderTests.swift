@@ -120,3 +120,32 @@ final class ProviderTests: XCTestCase {
     func episodes(_ id: Int64, line: String, page: Int) async throws -> EpisodeResponse { EpisodeResponse(items: [], total: 0) }
     func playback(_ selection: MediaSelection) async throws -> PlaybackSource { throw CatalogError.unsupportedMedia }
 }
+
+final class PlaybackPolicyTests: XCTestCase {
+    func testAutoHideAndAndroidSpeedContract() {
+        XCTAssertEqual(PlaybackPolicy.speeds, [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3])
+        XCTAssertEqual(PlaybackPolicy.hideDelay, 3)
+        XCTAssertTrue(PlaybackPolicy.canHide(playing: true, locked: false, panel: false, interacting: false))
+        XCTAssertTrue(PlaybackPolicy.canHide(playing: false, locked: true, panel: false, interacting: false))
+        XCTAssertFalse(PlaybackPolicy.canHide(playing: false, locked: false, panel: false, interacting: false))
+        XCTAssertFalse(PlaybackPolicy.canHide(playing: true, locked: false, panel: true, interacting: false))
+        XCTAssertFalse(PlaybackPolicy.canHide(playing: true, locked: false, panel: false, interacting: true))
+    }
+    func testLineSwitchRequiresTheSameEpisodeAndRefusesAmbiguity() {
+        let current = MediaSelection(work: VideoWork(id: 7, title: "A", sourceID: "kkys"), episode: VideoEpisode(key: "old", index: 0, name: "第01集", number: 1), lineKey: "a")
+        let same = VideoEpisode(key: "new", index: 8, name: "第1集", number: 1), wrong = VideoEpisode(key: "wrong", index: 0, name: "第2集", number: 2)
+        XCTAssertEqual(PlaybackPolicy.matching(current, in: [wrong, same]), same)
+        XCTAssertNil(PlaybackPolicy.matching(current, in: [wrong]))
+        XCTAssertNil(PlaybackPolicy.matching(current, in: [same, VideoEpisode(key: "dup", index: 3, name: "1", number: 1)]))
+        let jp = MediaSelection(work: VideoWork(id: 7, title: "A"), episode: current.episode, lineKey: "a")
+        XCTAssertNil(PlaybackPolicy.matching(jp, in: [same]))
+        XCTAssertEqual(PlaybackPolicy.matching(jp, in: [current.episode]), current.episode)
+    }
+    func testMovieLineMatchingUsesUniqueNameThenUniqueMovie() {
+        let selected = MediaSelection(work: VideoWork(id: 7, title: "A", sourceID: "kkys"), episode: VideoEpisode(key: "old", index: 0, name: "HD国语"), lineKey: "a")
+        let mandarin = VideoEpisode(key: "a", index: 1, name: "HD国语"), cantonese = VideoEpisode(key: "b", index: 0, name: "HD粤语")
+        XCTAssertEqual(PlaybackPolicy.matching(selected, in: [cantonese, mandarin]), mandarin)
+        XCTAssertEqual(PlaybackPolicy.matching(selected, in: [cantonese]), cantonese)
+        XCTAssertNil(PlaybackPolicy.matching(selected, in: [cantonese, cantonese]))
+    }
+}

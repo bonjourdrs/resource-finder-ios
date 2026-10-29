@@ -16,7 +16,7 @@ let package = Package(
     targets: [
         .target(name: "ProviderCore", dependencies: coreDependencies,
             path: "Sources/Core", exclude: ["JianpianCrypto.swift", "JianpianClient.swift", "CatalogService.swift"],
-            sources: ["Models.swift", "CatalogProtocol.swift", "ProviderRegistry.swift", "PublicCatalog.swift", "ProviderNetwork.swift", "KkysBootstrap.swift", "ProviderAccessStore.swift", "MultiCatalogService.swift", "EpisodeNavigator.swift", "LibraryStore.swift", "WatchStore.swift"]),
+            sources: ["Models.swift", "PlaybackPolicy.swift", "CatalogProtocol.swift", "ProviderRegistry.swift", "PublicCatalog.swift", "ProviderNetwork.swift", "KkysBootstrap.swift", "ProviderAccessStore.swift", "MultiCatalogService.swift", "EpisodeNavigator.swift", "LibraryStore.swift", "WatchStore.swift"]),
         .testTarget(name: "ProviderCoreTests", dependencies: ["ProviderCore"], path: "PortableTests"),
         .executableTarget(name: "ProviderProbe", dependencies: ["ProviderCore"], path: "PortableProbe")
     ],

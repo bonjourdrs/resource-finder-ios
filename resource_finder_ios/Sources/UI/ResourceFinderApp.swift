@@ -34,7 +34,7 @@ import SwiftUI
     }
     var body: some Scene {
         WindowGroup {
-            if let service { RootView(service: service).environmentObject(store).environmentObject(downloads).environmentObject(watch).onChange(of: scenePhase) { _, value in if value == .active { downloads.foreground() } }.tint(Color(red: 0.05, green: 0.46, blue: 0.40)) }
+            if let service { RootView(service: service).environmentObject(store).environmentObject(downloads).environmentObject(watch).onChange(of: scenePhase) { _, value in if value == .active { downloads.foreground(); CastModel.shared.foreground() } else if value == .background { downloads.background(); CastModel.shared.background() } }.tint(Color(red: 0.05, green: 0.46, blue: 0.40)) }
             else { ContentUnavailableView("暂时无法启动", systemImage: "exclamationmark.triangle", description: Text(startupError ?? "请重新启动应用")) }
         }
     }

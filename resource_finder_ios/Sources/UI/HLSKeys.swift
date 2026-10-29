@@ -31,7 +31,7 @@ enum HLSKeys {
             guard ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { throw DownloadFailure.unsupported }
             let request = NSMutableURLRequest(url: url)
             StoredKeyURLProtocol.permitNetwork(request)
-            if let agent = source.userAgent { request.setValue(agent, forHTTPHeaderField: "User-Agent") }
+            source.requestHeaders.forEach { request.setValue($1, forHTTPHeaderField: $0) }
             let result: (Data, URLResponse)
             do { result = try await session.data(for: request as URLRequest) }
             catch {

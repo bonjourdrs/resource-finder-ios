@@ -32,7 +32,7 @@ struct WatchRecord: Codable, Identifiable {
     }
     func resumePosition(_ selection: MediaSelection) -> Double {
         guard let record = records.first(where: { $0.id == selection.work.sourceKey && $0.selection.episode.key == selection.episode.key && $0.selection.lineKey == selection.lineKey }),
-              record.position < record.duration * 0.95, record.duration - record.position > 5 else { return 0 }
+              record.position < record.duration * 0.95, record.duration - record.position > 30 else { return 0 }
         return record.position
     }
     func remove(_ id: String) { suppressed.insert(id); records.removeAll { $0.id == id }; persist() }

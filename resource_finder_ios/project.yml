@@ -6,8 +6,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.3.0"
-    CURRENT_PROJECT_VERSION: "3"
+    MARKETING_VERSION: "0.4.0"
+    CURRENT_PROJECT_VERSION: "4"
     CODE_SIGN_STYLE: Automatic
     "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
     "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]": YES
@@ -42,7 +42,9 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        NSLocalNetworkUsageDescription: 用于搜索并控制同一 Wi-Fi 内的电视，以及投屏时向电视传输视频。
         NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
           NSAllowsArbitraryLoadsForMedia: true
           NSAllowsLocalNetworking: true
     settings:

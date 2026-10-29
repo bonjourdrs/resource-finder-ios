@@ -49,7 +49,8 @@ import AVFoundation
     }
     func testRequiredMediaHeadersAreNotSilentlyDropped() throws {
         XCTAssertEqual(try descriptor(headers: ["User-Agent": "fixture", "X-JP-Nonce": "excluded"]).userAgent(), "fixture")
-        XCTAssertThrowsError(try descriptor(headers: ["Referer": "https://example.com"]).userAgent())
+        XCTAssertEqual(try descriptor(headers: ["Referer": "https://example.com"]).mediaHeaders()["Referer"], "https://example.com")
+        XCTAssertThrowsError(try descriptor(headers: ["Referer": "bad\r\ninjection"]).mediaHeaders())
     }
     func testSearchDeletionPersistsAndDoesNotAffectFavorites() {
         let suite = "rf.tests.\(UUID().uuidString)", defaults = UserDefaults(suiteName: suite)!

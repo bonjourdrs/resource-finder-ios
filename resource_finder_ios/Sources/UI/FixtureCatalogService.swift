@@ -14,11 +14,12 @@ import Foundation
     func manifest(_ id: Int64) async throws -> PlaybackManifest {
         PlaybackManifest(workID: id, lines: [VideoLine(key: "xl", name: "XL 线路", episodeCount: 2, entitlementRequired: false),
                                             VideoLine(key: "cz", name: "CZ 线路", episodeCount: 1, entitlementRequired: false),
+                                            VideoLine(key: "backup", name: "备用线路", episodeCount: 2, entitlementRequired: false),
                                             VideoLine(key: "vip", name: "需授权线路", episodeCount: 1, entitlementRequired: true)])
     }
     func episodes(_ id: Int64, line: String, page: Int) async throws -> EpisodeResponse {
         try await Task.sleep(for: .milliseconds(40))
-        let items = line == "xl" ? [VideoEpisode(key: "1", index: 0, name: "第1集"), VideoEpisode(key: "2", index: 1, name: "第2集")] : [VideoEpisode(key: "special", index: 0, name: "特别篇")]
+        let items = line != "cz" ? [VideoEpisode(key: "1", index: 0, name: "第1集"), VideoEpisode(key: "2", index: 1, name: "第2集")] : [VideoEpisode(key: "special", index: 0, name: "特别篇")]
         return EpisodeResponse(items: items, total: items.count)
     }
     func playback(_ selection: MediaSelection) async throws -> PlaybackSource {

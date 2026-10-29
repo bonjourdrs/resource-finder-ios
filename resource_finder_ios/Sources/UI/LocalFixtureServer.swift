@@ -7,14 +7,15 @@ final class LocalFixtureServer {
     private let listener: NWListener
     private let queue = DispatchQueue(label: "resourcefinder.fixture.http")
     private let files: [String: Data]
+    private let requiredHeaders: [String: String]
     private let chunkDelay: Double
     private var connections: [NWConnection] = []
     private let lock = NSLock()
     private var count = 0
     var requestCount: Int { lock.lock(); defer { lock.unlock() }; return count }
     private(set) var baseURL: URL!
-    init(files: [String: Data], chunkDelay: Double = 0) throws {
-        self.files = files; self.chunkDelay = chunkDelay
+    init(files: [String: Data], chunkDelay: Double = 0, requiredHeaders: [String: String] = [:]) throws {
+        self.files = files; self.chunkDelay = chunkDelay; self.requiredHeaders = requiredHeaders
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
         listener = try NWListener(using: parameters)
@@ -53,6 +54,9 @@ final class LocalFixtureServer {
     private func respond(_ connection: NWConnection, text: String) {
         lock.lock(); count += 1; lock.unlock()
         let lines = text.components(separatedBy: "\r\n"), parts = (lines.first ?? "").split(separator: " ")
+        guard requiredHeaders.allSatisfy({ key, value in lines.contains { $0.lowercased() == (key + ": " + value).lowercased() } }) else {
+            connection.send(content: Data("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8), completion: .contentProcessed { _ in connection.cancel() }); return
+        }
         guard parts.count >= 2, ["GET", "HEAD"].contains(String(parts[0])), let file = files[String(parts[1]).components(separatedBy: "?")[0]] else {
             connection.send(content: Data("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8), completion: .contentProcessed { _ in connection.cancel() }); return
         }

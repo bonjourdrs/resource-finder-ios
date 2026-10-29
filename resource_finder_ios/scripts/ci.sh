@@ -25,5 +25,5 @@ if [ -d build/DerivedData/Build/Products/Debug-iphonesimulator/ResourceFinder.ap
 fi
 if [ "$task_test_status" -ne 0 ]; then exit "$task_test_status"; fi
 if [ "${RF_UNIT_DIAGNOSTICS:-false}" = "true" ]; then exit 0; fi
-ditto -c -k --sequesterRsrc --keepParent build/DerivedData/Build/Products/Debug-iphonesimulator/ResourceFinder.app build/Resource-Finder-iOS-0.3-Simulator.zip
-shasum -a 256 build/Resource-Finder-iOS-0.3-Simulator.zip > build/Resource-Finder-iOS-0.3-Simulator.sha256
+ditto -c -k --sequesterRsrc --keepParent build/DerivedData/Build/Products/Debug-iphonesimulator/ResourceFinder.app build/Resource-Finder-iOS-0.4-Simulator.zip
+shasum -a 256 build/Resource-Finder-iOS-0.4-Simulator.zip > build/Resource-Finder-iOS-0.4-Simulator.sha256

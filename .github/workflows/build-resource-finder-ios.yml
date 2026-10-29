@@ -37,10 +37,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Resource-Finder-iOS-0.3.0-Unsigned
+          name: Resource-Finder-iOS-0.4.0-Unsigned
           path: |
-            resource_finder_ios/build/Resource-Finder-iOS-0.3.0-Unsigned.ipa
-            resource_finder_ios/build/Resource-Finder-iOS-0.3.0-Unsigned.sha256
+            resource_finder_ios/build/Resource-Finder-iOS-0.4.0-Unsigned.ipa
+            resource_finder_ios/build/Resource-Finder-iOS-0.4.0-Unsigned.sha256
             resource_finder_ios/build/device-package.json
           if-no-files-found: warn
           retention-days: 7
@@ -60,17 +60,17 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Resource-Finder-iOS-0.3-Simulator
+          name: Resource-Finder-iOS-0.4-Simulator
           path: |
-            resource_finder_ios/build/Resource-Finder-iOS-0.3-Simulator.zip
-            resource_finder_ios/build/Resource-Finder-iOS-0.3-Simulator.sha256
+            resource_finder_ios/build/Resource-Finder-iOS-0.4-Simulator.zip
+            resource_finder_ios/build/Resource-Finder-iOS-0.4-Simulator.sha256
           if-no-files-found: error
           retention-days: 7
       - name: Upload validation reports and screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Resource-Finder-iOS-0.3-Validation
+          name: Resource-Finder-iOS-0.4-Validation
           path: |
             resource_finder_ios/build/*.log
             resource_finder_ios/build/*.json

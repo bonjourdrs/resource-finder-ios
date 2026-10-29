@@ -17,6 +17,8 @@ import UIKit
     func testMP4DownloadSurvivesReloadAndPlaysWithoutOriginOrResolver() async throws { try await offlineRoundTrip(path: "video.mp4", kind: .progressive) }
     func testHLSDownloadPlaysWithOriginStopped() async throws { try await offlineRoundTrip(path: "hls_index.m3u8", kind: .hls) }
     func testAES128HLSDownloadPlaysWithOriginStopped() async throws { try await offlineRoundTrip(path: "aes_index.m3u8", kind: .hls) }
+    func testHeaderProtectedMP4DownloadOfflineRoundTrip() async throws { try await offlineRoundTrip(path: "video.mp4", kind: .progressive, headers: ["Referer": "https://fixture.example/"]) }
+    func testHeaderProtectedAES128DownloadOfflineRoundTrip() async throws { try await offlineRoundTrip(path: "aes_index.m3u8", kind: .hls, headers: ["Referer": "https://fixture.example/", "Origin": "https://fixture.example"]) }
     func testMissingAESKeysFailLocallyWithoutResolver() async throws { try await offlineRoundTrip(path: "aes_index.m3u8", kind: .hls, eraseKeys: true) }
     func testHLSFixtureRendersOnline() async throws {
         let server = try LocalFixtureServer(files: LocalFixtureServer.bundledFiles())
@@ -27,10 +29,10 @@ import UIKit
         player.play()
         try await wait({ player.currentItem?.status == .readyToPlay && player.currentTime().seconds >= 0.5 && surface.layer.isReadyForDisplay }, timeout: 10)
     }
-    private func offlineRoundTrip(path: String, kind: MediaKind, eraseKeys: Bool = false) async throws {
-        let root = directory(), server = try LocalFixtureServer(files: LocalFixtureServer.bundledFiles())
+    private func offlineRoundTrip(path: String, kind: MediaKind, eraseKeys: Bool = false, headers: [String: String] = [:]) async throws {
+        let root = directory(), server = try LocalFixtureServer(files: LocalFixtureServer.bundledFiles(), requiredHeaders: headers)
         try await server.start()
-        let service = DownloadTestService(sources: [PlaybackSource(url: server.baseURL.appendingPathComponent(path), kind: kind)])
+        let service = DownloadTestService(sources: [PlaybackSource(url: server.baseURL.appendingPathComponent(path), kind: kind, headers: headers)])
         let center = DownloadCenter(root: root, namespace: "rf.tests.\(UUID().uuidString)")
         defer { center.shutdown(); server.stop(); try? FileManager.default.removeItem(at: root) }
         center.configure(service: service)
@@ -197,7 +199,7 @@ import UIKit
         XCTAssertEqual(try Data(contentsOf: path), bytes)
     }
 }
-@MainActor private final class PlayerTestSurface {
+@MainActor final class PlayerTestSurface {
     let window: UIWindow
     let layer: AVPlayerLayer
     init(player: AVPlayer) throws {

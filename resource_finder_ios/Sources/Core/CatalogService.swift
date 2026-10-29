@@ -29,7 +29,7 @@ import Foundation
     }
     func playback(_ selection: MediaSelection) async throws -> PlaybackSource {
         let descriptor = try await resolve(selection)
-        return try PlaybackSource(url: descriptor.validated(for: selection), userAgent: descriptor.userAgent(), kind: descriptor.protocolName == "hls" ? .hls : .progressive)
+        return try PlaybackSource(url: descriptor.validated(for: selection), userAgent: descriptor.userAgent(), kind: descriptor.protocolName == "hls" ? .hls : .progressive, headers: descriptor.mediaHeaders().filter { $0.key.lowercased() != "user-agent" })
     }
 }
 

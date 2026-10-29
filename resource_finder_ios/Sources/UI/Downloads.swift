@@ -84,6 +84,8 @@ enum DownloadFailure: LocalizedError {
     private var finalizing = Set<String>()
     private var assetLocations: [UUID: URL] = [:]
     private var protectedIDs = Set<String>()
+    private var castProtectedIDs = Set<String>()
+    private var relays: [String: MediaRelay] = [:]
     private var activated = false
     private var lastProgressSave = Date.distantPast
     private var metadataValid = true
@@ -153,7 +155,11 @@ enum DownloadFailure: LocalizedError {
     func pause(_ id: String, reason: String? = nil) {
         guard let entry = entries.first(where: { $0.id == id }), entry.state == .queued || entry.state.active else { return }
         resolvers.removeValue(forKey: id)?.cancel(); endLease(id)
-        tasks[id]?.suspend(); update(id) { $0.state = .paused; $0.error = reason }; persist(); pump()
+        if let relay = relays.removeValue(forKey: id) {
+            tasks.removeValue(forKey: id)?.cancel(); relay.stop(); cleanLocal(entry)
+            update(id) { $0.attempt = UUID(); $0.progress = 0; $0.localBookmark = nil; $0.localPath = nil }
+        } else { tasks[id]?.suspend() }
+        update(id) { $0.state = .paused; $0.error = reason }; persist(); pump()
     }
     func resume(_ id: String) {
         guard let entry = entries.first(where: { $0.id == id }), [.paused, .failed].contains(entry.state), !finalizing.contains(id) else { return }
@@ -167,14 +173,17 @@ enum DownloadFailure: LocalizedError {
         persist(); pump()
     }
     func remove(_ id: String) throws {
-        guard !protectedIDs.contains(id) else { throw DownloadFailure.inUse }
+        guard !protectedIDs.contains(id), !castProtectedIDs.contains(id) else { throw DownloadFailure.inUse }
         guard let entry = entries.first(where: { $0.id == id }) else { return }
         entries.removeAll { $0.id == id }; persist()
         resolvers.removeValue(forKey: id)?.cancel(); endLease(id); tasks.removeValue(forKey: id)?.cancel()
-        cleanLocal(entry); persist(); pump()
+        relays.removeValue(forKey: id)?.stop(); cleanLocal(entry); persist(); pump()
     }
     func protect(_ id: String) { protectedIDs.insert(id) }
     func unprotect(_ id: String) { protectedIDs.remove(id) }
+    func protectCast(_ id: String) { castProtectedIDs.insert(id) }
+    func unprotectCast(_ id: String) { castProtectedIDs.remove(id) }
+    func background() { for id in Array(relays.keys) { pause(id, reason: "此线路需要手机适配请求头，已在后台暂停；回到前台点继续") } }
     func foreground() { persist(); pump() }
     private func pump() {
         guard restored, storageError == nil, let service else { return }
@@ -193,10 +202,16 @@ enum DownloadFailure: LocalizedError {
                 guard let self else { return }
                 defer { if current(id, attempt) { resolvers.removeValue(forKey: id); endLease(id) } }
                 do {
-                    let source = try await service.downloadSource(entry.selection)
+                    var source = try await service.downloadSource(entry.selection)
                     try Task.checkCancellation()
                     guard current(id, attempt), entries.first(where: { $0.id == id })?.state == .resolving else { return }
                     guard ["http", "https"].contains(source.url.scheme?.lowercased() ?? "") else { throw DownloadFailure.unsupported }
+                    if source.kind == .hls && source.requiresRelay {
+                        let proxy = try MediaRelay(source: source, allowsCellular: allowsCellular)
+                        let local = try await proxy.start()
+                        try Task.checkCancellation()
+                        relays[id] = proxy; source = PlaybackSource(url: local, kind: .hls)
+                    }
                     var options: [String: Any] = [:]
                     if let agent = source.userAgent { options[AVURLAssetHTTPUserAgentKey] = agent }
                     let task: URLSessionTask
@@ -216,7 +231,7 @@ enum DownloadFailure: LocalizedError {
                         task = streams.makeAssetDownloadTask(downloadConfiguration: configuration)
                     } else {
                         var request = URLRequest(url: source.url)
-                        if let agent = source.userAgent { request.setValue(agent, forHTTPHeaderField: "User-Agent") }
+                        source.requestHeaders.forEach { request.setValue($1, forHTTPHeaderField: $0) }
                         task = files.downloadTask(with: request)
                     }
                     try Task.checkCancellation()
@@ -224,6 +239,7 @@ enum DownloadFailure: LocalizedError {
                     task.taskDescription = String(data: try JSONEncoder().encode(TaskMarker(id: id, attempt: attempt)), encoding: .utf8)
                     tasks[id] = task; update(id) { $0.state = .transferring; $0.kind = source.kind }; persist(); task.resume()
                 } catch {
+                    relays.removeValue(forKey: id)?.stop()
                     if !Task.isCancelled && current(id, attempt) {
                         update(id) { $0.state = .failed; $0.error = error.localizedDescription }; persist(); pump()
                     }
@@ -337,6 +353,7 @@ enum DownloadFailure: LocalizedError {
     fileprivate func completed(_ session: URLSession, task: URLSessionTask, error: Error?) {
         guard let marker = marker(task), current(marker.id, marker.attempt) else { return }
         tasks.removeValue(forKey: marker.id)
+        relays.removeValue(forKey: marker.id)?.stop()
         if let error {
             let value = error as NSError
             update(marker.id) {
@@ -378,7 +395,7 @@ enum DownloadFailure: LocalizedError {
             persist()
         }
     }
-    func shutdown() { files?.invalidateAndCancel(); streams?.invalidateAndCancel(); resolvers.values.forEach { $0.cancel() } }
+    func shutdown() { relays.values.forEach { $0.stop() }; relays.removeAll(); files?.invalidateAndCancel(); streams?.invalidateAndCancel(); resolvers.values.forEach { $0.cancel() } }
 }
 private final class DownloadEvents: NSObject, AVAssetDownloadDelegate, URLSessionDownloadDelegate {
     weak var owner: DownloadCenter?
@@ -416,6 +433,7 @@ private final class DownloadEvents: NSObject, AVAssetDownloadDelegate, URLSessio
     }
 }
 @MainActor final class ResourceAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask { PlayerOrientation.mask }
     static weak var downloadCenter: DownloadCenter?
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         StoredKeyURLProtocol.install(); return true

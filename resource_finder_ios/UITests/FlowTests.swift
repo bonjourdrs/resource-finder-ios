@@ -93,6 +93,43 @@ final class FlowTests: XCTestCase {
         waitForExpectations(timeout: 10)
         screenshot("08-auto-next")
     }
+    func testSpeedLockAndLineSwitchInPlayer() {
+        search(); app.buttons["work_10"].tap()
+        XCTAssertTrue(app.buttons["episode_1"].waitForExistence(timeout: 10)); app.buttons["episode_1"].tap()
+        XCTAssertTrue(app.buttons["below_speed"].waitForExistence(timeout: 10)); app.buttons["below_speed"].tap()
+        XCTAssertTrue(app.buttons["speed_1.25"].waitForExistence(timeout: 5)); app.buttons["speed_1.25"].tap()
+        XCTAssertTrue(app.staticTexts["speed_check"].waitForExistence(timeout: 5)); XCTAssertEqual(app.staticTexts["speed_check"].label, "1.25×")
+        app.buttons["below_lines"].tap()
+        XCTAssertTrue(app.buttons["playing_line_backup"].waitForExistence(timeout: 5)); app.buttons["playing_line_backup"].tap()
+        XCTAssertTrue(app.buttons["below_lines"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["playing_episode"].label, "第1集")
+        app.buttons["below_lines"].tap(); app.buttons["playing_line_cz"].tap()
+        XCTAssertTrue(app.staticTexts["player_message"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["player_message"].label.contains("没有唯一匹配"))
+        XCTAssertEqual(app.staticTexts["playing_episode"].label, "第1集")
+        // Summon chrome, then lock. Locked mode suppresses all transport controls.
+        if !app.buttons["player_lock"].exists { app.otherElements["player_gesture_area"].tap() }
+        XCTAssertTrue(app.buttons["player_lock"].waitForExistence(timeout: 5)); app.buttons["player_lock"].tap()
+        XCTAssertTrue(app.buttons["player_unlock"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["player_play_pause"].exists); XCTAssertFalse(app.buttons["close_player"].exists)
+        screenshot("09-player-locked")
+        app.buttons["player_unlock"].tap()
+        XCTAssertTrue(app.buttons["close_player"].waitForExistence(timeout: 5))
+        app.buttons["close_player"].tap()
+    }
+    func testLongPressTemporarilyAcceleratesThenRestoresRate() {
+        search(); app.buttons["work_10"].tap()
+        XCTAssertTrue(app.buttons["episode_1"].waitForExistence(timeout: 10)); app.buttons["episode_1"].tap()
+        let decode = app.staticTexts["decode_check"]
+        expectation(for: NSPredicate(format: "label == %@", "已解码并推进"), evaluatedWith: decode); waitForExpectations(timeout: 15)
+        // Remove chrome so a real touch reaches the gesture recognizer.
+        let gesture = app.otherElements["player_gesture_area"]
+        if app.buttons["player_lock"].exists { gesture.tap() }
+        gesture.press(forDuration: 1.1)
+        XCTAssertFalse(app.staticTexts["hold_feedback"].exists)
+        XCTAssertTrue(["1×", "1.25×"].contains(app.staticTexts["speed_check"].label))
+        screenshot("10-hold-released")
+    }
     func testFavoriteCanBeAddedAndRemoved() {
         search(); app.buttons["work_10"].tap()
         XCTAssertTrue(app.buttons["收藏影片"].waitForExistence(timeout: 5))
