@@ -163,14 +163,15 @@ enum PlayerPanel: String, Identifiable { case speed, episodes, lines, more, cast
     }
     private func video(wide: Bool) -> some View {
         ZStack {
-            NativePlayer(player: model.player, gestures: PlayerGestures(locked: locked, tap: { chrome.toggle(); scheduleHide() }, doubleTap: { model.toggle(); wake() }, hold: { active in
+            NativePlayer(player: model.player).allowsHitTesting(false).accessibilityIdentifier("native_player")
+            PlayerTouchSurface(locked: locked, tap: { chrome.toggle(); scheduleHide() }, doubleTap: { model.toggle(); wake() }, hold: { active in
                 if active { model.hold(); chrome = false } else { model.releaseHold(); scheduleHide() }
-            }, cancel: { model.releaseHold(); dragStart = nil; preview = nil; feedback = nil; interacting = false; wake() }, drag: drag)).accessibilityIdentifier("native_player")
+            }, cancel: { model.releaseHold(); dragStart = nil; preview = nil; feedback = nil; interacting = false; wake() }, drag: drag)
             if chrome && !locked && panel == nil {
                 PlayerChrome(model: model, landscape: wide, title: title, hasNext: hasNext && !busy, close: back, fullscreen: fullscreen, lock: { setLock(true) }, cast: { open(.cast) }, speed: { open(.speed) }, episodes: { open(.episodes) }, more: { open(.more) }, next: { next(userInitiated: true) }, interact: { interacting = $0; wake() })
             }
             if locked && chrome { HStack { Button { setLock(false) } label: { Image(systemName: "lock.fill").frame(width: 50, height: 50).background(.black.opacity(0.5), in: Circle()) }.accessibilityLabel("解锁画面").accessibilityIdentifier("player_unlock"); Spacer() }.padding().foregroundStyle(.white) }
-            if model.holding { Text("\(model.speed.formatted())× 加速中，松手恢复").padding(10).background(.black.opacity(0.6), in: Capsule()).foregroundStyle(.white).accessibilityIdentifier("hold_feedback") }
+            if model.holding { Text("\(model.speed.formatted())× 加速中，松手恢复").padding(10).background(.black.opacity(0.6), in: Capsule()).foregroundStyle(.white).accessibilityIdentifier("hold_feedback").allowsHitTesting(false) }
             if let feedback { Text(feedback).padding(10).background(.black.opacity(0.6), in: Capsule()).foregroundStyle(.white) }
             if busy { ProgressView().tint(.white).allowsHitTesting(false) }
             if wide, let value = panel {

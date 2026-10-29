@@ -108,7 +108,9 @@ final class FlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["player_message"].label.contains("没有唯一匹配"))
         XCTAssertEqual(app.staticTexts["playing_episode"].label, "第1集")
         // Summon chrome, then lock. Locked mode suppresses all transport controls.
-        if !app.buttons["player_lock"].exists { app.otherElements["player_gesture_area"].tap() }
+        app.otherElements["player_gesture_area"].coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.45)).doubleTap()
+        XCTAssertTrue(app.buttons["player_play_pause"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["player_play_pause"].label, "播放")
         XCTAssertTrue(app.buttons["player_lock"].waitForExistence(timeout: 5)); app.buttons["player_lock"].tap()
         XCTAssertTrue(app.buttons["player_unlock"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["player_play_pause"].exists); XCTAssertFalse(app.buttons["close_player"].exists)
@@ -124,9 +126,9 @@ final class FlowTests: XCTestCase {
         expectation(for: NSPredicate(format: "label == %@", "已解码并推进"), evaluatedWith: decode); waitForExpectations(timeout: 15)
         // Remove chrome so a real touch reaches the gesture recognizer.
         let gesture = app.otherElements["player_gesture_area"]
-        if app.buttons["player_lock"].exists { gesture.tap() }
+        if app.buttons["player_lock"].exists { gesture.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.45)).tap() }
         let fixed = app.staticTexts["speed_check"].label
-        gesture.press(forDuration: 1.1)
+        gesture.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.45)).press(forDuration: 1.1)
         XCTAssertEqual(app.staticTexts["hold_count"].label, "1")
         XCTAssertFalse(app.staticTexts["hold_feedback"].exists)
         XCTAssertEqual(app.staticTexts["speed_check"].label, fixed)

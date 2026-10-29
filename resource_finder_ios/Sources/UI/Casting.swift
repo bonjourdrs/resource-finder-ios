@@ -80,12 +80,12 @@ import SwiftUI
             }
         }
     }
-    private func exportOffline(_ source: PlaybackSource) async throws -> PlaybackSource {
+    func exportOffline(_ source: PlaybackSource) async throws -> PlaybackSource {
         let keys = try source.offlineKeys.map(OfflineContentKeys.init)
         let asset = AVURLAsset(url: source.url)
         guard let job = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough), job.supportedFileTypes.contains(.mp4) else { throw DLNAError.command("系统无法将这份离线 HLS 导出给电视。请在影片详情使用在线投屏或 AirPlay。") }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("rf-cast-\(UUID().uuidString).mp4")
-        export = job; job.outputURL = url; job.outputFileType = .mp4
+        export = job; defer { export = nil }; job.shouldOptimizeForNetworkUse = true; job.outputURL = url; job.outputFileType = .mp4
         await job.export()
         withExtendedLifetime(keys) {}
         guard job.status == .completed else { try? FileManager.default.removeItem(at: url); throw DLNAError.command("系统无法导出这份离线视频，请使用在线投屏。") }

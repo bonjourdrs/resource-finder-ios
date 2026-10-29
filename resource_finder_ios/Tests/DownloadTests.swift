@@ -54,8 +54,7 @@ import UIKit
         XCTAssertTrue(offline.url.isFileURL); XCTAssertTrue(offline.offline)
         if kind == .hls {
             XCTAssertEqual(try HLSKeys.read(XCTUnwrap(offline.offlineKeys)).count, path.hasPrefix("aes_") ? 1 : 0)
-            let exportable = AVAssetExportSession(asset: AVURLAsset(url: offline.url), presetName: AVAssetExportPresetPassthrough)?.supportedFileTypes.contains(.mp4) ?? false
-            print("offline-TV-export-capability: \(path) MP4=\(exportable)")
+
         }
         if eraseKeys {
             try JSONEncoder().encode([String: Data]()).write(to: XCTUnwrap(offline.offlineKeys))
@@ -84,6 +83,18 @@ import UIKit
         try await wait({ player.position >= 4 }, timeout: 10)
         XCTAssertNil(player.error); XCTAssertEqual(service.playbackCalls, 0)
         player.stop()
+        if kind == .hls {
+            if !eraseKeys {
+                let converted = try await CastModel().exportOffline(offline)
+                defer { try? FileManager.default.removeItem(at: converted.url) }
+                let asset = AVURLAsset(url: converted.url)
+                let playable = try await asset.load(.isPlayable)
+                XCTAssertTrue(playable)
+                let image = try AVAssetImageGenerator(asset: asset).copyCGImage(at: .zero, actualTime: nil)
+                XCTAssertEqual(image.width, 320)
+                print("offline-TV-export: \(path) local MP4 decoded with origin stopped")
+            }
+        }
         try restored.remove(selection.id)
         XCTAssertTrue(restored.entries.isEmpty)
         XCTAssertFalse(FileManager.default.fileExists(atPath: offline.url.path))
