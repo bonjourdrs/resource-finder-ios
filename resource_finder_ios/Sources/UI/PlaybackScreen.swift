@@ -140,7 +140,7 @@ enum PlayerPanel: String, Identifiable { case speed, episodes, lines, more, cast
                 if !wide && !locked { HStack { Button("关闭", action: back).accessibilityIdentifier("close_player"); Spacer(); Text("播放").font(.headline); Spacer(); Color.clear.frame(width: 44) }.padding(.horizontal).frame(height: 44) }
                 video(wide: wide).frame(height: wide ? geometry.size.height : geometry.size.width * 9 / 16)
                 if !wide && !locked { portrait }
-            }.background(Color(.systemGroupedBackground))
+            }.background((wide ? Color.black : Color(.systemGroupedBackground)).ignoresSafeArea())
                 .onAppear { landscape = wide }
                 .onChange(of: wide) { _, value in landscape = value; model.releaseHold(); panel = nil; interacting = false; wake() }
         }
