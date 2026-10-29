@@ -26,4 +26,4 @@ Android reference: `bonjourdrs/codex-test` commit `9dca0368d3ccf07bee461d6501100
 - iOS uses AirPlay in addition to DLNA. Real TV codecs, Wi-Fi isolation, entitlement grant and physical iPhone rotation must be verified after signing. Simulator SOAP fixtures are protocol evidence, not household-TV evidence.
 - Both builds reject proprietary engines and remote JavaScript parsing pages. A catalog descriptor is not proof every provider movie can decode.
 
-CI acceptance is pending for this revision. Do not mark physical device / TV acceptance complete based on simulator tests.
+Automated acceptance passed 61 tests (15 portable + 38 native + 8 UI) in [run 14](https://github.com/bonjourdrs/resource-finder-ios/actions/runs/40890416787) for app source `a33d021065c4189dffe49912e75df96e42624248`. Physical device / TV acceptance remains pending after signing. Simulator results do not grant signing or multicast entitlements.

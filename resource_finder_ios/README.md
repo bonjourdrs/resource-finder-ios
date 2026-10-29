@@ -1,4 +1,4 @@
-# Resource Finder iOS — 0.4 candidate
+# Resource Finder iOS — 0.4.0
 
 Native SwiftUI + AVFoundation app for iOS 17+. Ten source adapters: Jianpian, KKYS, Hongniu, 360, Modu, Feifan, Liangzi, Baofeng, Wujin and Tianya. All start enabled; the last five are experimental. Catalog responses, media descriptors and actual playback are separate evidence.
 
@@ -43,4 +43,4 @@ No Apple credentials or signing certificates are configured. Public macOS CI use
 - Synthetic tests cover actual local decode, seek, origin-stopped HLS/AES playback and TV media relay, queue persistence, native background task plumbing, SOAP protocol and player UI gestures. These do not prove physical iPhone signing, mobile network scheduling, every provider movie, every TV codec or multicast entitlement approval.
 - iOS volume gestures affect the current video; hardware buttons control system volume. Brightness and orientation/idle state are restored when playback closes. Background audio and PiP are outside the Android feature scope.
 
-The prior 0.3 baseline passed 45 tests. Current 0.4 acceptance is tracked by the latest workflow; do not reuse older successful test counts for changed app code.
+Automated 0.4 acceptance passed 61 tests (15 portable + 38 native + 8 UI) in [run 14](https://github.com/bonjourdrs/resource-finder-ios/actions/runs/40890416787), app source `a33d021065c4189dffe49912e75df96e42624248`. The iPhoneOS arm64 package was verified separately from the iOS 18.5 simulator tests. Installation still requires effective device signing/provisioning and physical iPhone/TV testing.
