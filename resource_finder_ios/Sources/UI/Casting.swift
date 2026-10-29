@@ -20,7 +20,7 @@ import SwiftUI
     private var searchTask: Task<Void, Never>?
     private var commandTask: Task<Void, Never>?
     private var generation = UUID()
-    private var selection: MediaSelection?
+    @Published private(set) var selection: MediaSelection?
     private var service: (any CatalogService)?
     private var watch: WatchStore?
     private var downloads: DownloadCenter?
@@ -123,6 +123,11 @@ import SwiftUI
             catch { self.error = error.localizedDescription; if action == "Seek" { canSeek = false }; if rendering { canVolume = false } }
         }
     }
+    func stopConfirmed() async -> Bool {
+        guard let device else { return true }
+        do { _ = try await client.action(device, "Stop"); await stop(); return true }
+        catch { self.error = "未能确认电视停止，请先在电视端停止播放。"; return false }
+    }
     func stop() async {
         generation = UUID(); commandTask?.cancel(); pollTask?.cancel(); export?.cancelExport(); busy = false
         if let device { _ = try? await client.action(device, "Stop") }
@@ -148,11 +153,13 @@ import SwiftUI
     let offlineID: String?
     let position: Double
     let pauseLocal: () -> Void
+    let returnToPhone: (MediaSelection, Double) -> Void
     @ObservedObject private var cast = CastModel.shared
     @State private var manual = ""
     @State private var forceRelay = false
     @State private var seek: Double = 0
     @State private var volume: Double = 50
+    @State private var episodes: [VideoEpisode] = []
     var body: some View {
         Form {
             Section("AirPlay") { AirPlayPicker().frame(height: 44); Text("支持 AirPlay 的电视可从上方系统按钮选择。").font(.caption) }
@@ -171,12 +178,28 @@ import SwiftUI
                 Section(cast.device?.name ?? "当前电视") {
                     Text(cast.status); Text(TVXML.time(cast.position) + " / " + TVXML.time(cast.duration)).monospacedDigit()
                     HStack { Button("播放") { cast.control("Play", arguments: [("Speed", "1")]) }; Spacer(); Button("暂停") { cast.control("Pause") }; Spacer(); Button("停止投屏", role: .destructive) { Task { await cast.stop() } } }
+                    Button("回到手机继续看") {
+                        let target = cast.selection ?? selection, time = cast.position
+                        Task { if await cast.stopConfirmed() { returnToPhone(target, time) } }
+                    }
                     Slider(value: $seek, in: 0...max(1, cast.duration), onEditingChanged: { editing in if !editing { cast.control("Seek", arguments: [("Unit", "REL_TIME"), ("Target", TVXML.time(seek))]) } }).disabled(!cast.canSeek || cast.duration <= 0)
                     HStack { Text("电视音量"); Slider(value: $volume, in: 0...100, onEditingChanged: { editing in if !editing { cast.control("SetVolume", arguments: [("Channel", "Master"), ("DesiredVolume", String(Int(volume)))], rendering: true) } }).disabled(!cast.canVolume) }
                 }
             }
+            if cast.device != nil && offlineID == nil && !episodes.isEmpty {
+                Section("电视选集") {
+                    ForEach(episodes) { episode in
+                        Button(episode.name) {
+                            guard let tv = cast.device else { return }
+                            let active = cast.selection ?? selection
+                            let target = MediaSelection(work: active.work, episode: episode, lineKey: active.lineKey)
+                            cast.connect(tv, selection: target, service: service, downloads: downloads, watch: watch, offlineID: nil, position: 0, forceRelay: forceRelay, pauseLocal: pauseLocal)
+                        }.disabled(cast.busy || episode.unsupportedReason != nil)
+                    }
+                }
+            }
             if let error = cast.error { Section { Text(error).foregroundStyle(.red).font(.caption) } }
-        }.onChange(of: cast.position) { _, value in seek = value }
+        }.task(id: cast.selection?.id ?? selection.id) { episodes = (try? await PlaybackCatalog.episodes(cast.selection ?? selection, line: (cast.selection ?? selection).lineKey, service: service)) ?? [] }.onChange(of: cast.position) { _, value in seek = value }
     }
 }
 @MainActor struct AirPlayPicker: UIViewRepresentable {

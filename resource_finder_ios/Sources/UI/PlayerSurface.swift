@@ -37,7 +37,7 @@ import SwiftUI
         context.coordinator.doubleRecognizer?.isEnabled = !locked; context.coordinator.holdRecognizer?.isEnabled = !locked; context.coordinator.panRecognizer?.isEnabled = !locked
     }
     static func dismantleUIView(_ view: UIView, coordinator: Coordinator) { coordinator.parent.hold(false) }
-    final class Coordinator: NSObject {
+    @MainActor final class Coordinator: NSObject {
         var parent: PlayerGestures
         weak var doubleRecognizer: UITapGestureRecognizer?
         weak var holdRecognizer: UILongPressGestureRecognizer?

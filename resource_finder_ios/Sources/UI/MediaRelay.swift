@@ -37,7 +37,7 @@ import Network
                     switch state {
                     case .ready:
                         completed = true
-                        base = URL(string: "http://\(address):\(listener.port!.rawValue)")!
+                        self.base = URL(string: "http://\(self.address):\(self.listener.port!.rawValue)")!
                         continuation.resume()
                     case .failed(let error): completed = true; continuation.resume(throwing: error)
                     case .cancelled: completed = true; continuation.resume(throwing: CancellationError())
@@ -47,15 +47,15 @@ import Network
             }
             listener.newConnectionHandler = { [weak self] connection in
                 Task { @MainActor in
-                    guard let self, !stopped, connections.count < 12 else { connection.cancel(); return }
-                    if let allowedPeer {
+                    guard let self, !self.stopped, self.connections.count < 12 else { connection.cancel(); return }
+                    if let allowedPeer = self.allowedPeer {
                         guard case .hostPort(let host, _) = connection.endpoint, String(describing: host) == allowedPeer else { connection.cancel(); return }
                     }
-                    let id = UUID(); connections[id] = connection
+                    let id = UUID(); self.connections[id] = connection
                     connection.stateUpdateHandler = { [weak self] state in
                         if case .cancelled = state { Task { @MainActor in self?.jobs.removeValue(forKey: id)?.cancel(); self?.connections.removeValue(forKey: id) } }
                     }
-                    connection.start(queue: queue); receive(id, connection, bytes: Data())
+                    connection.start(queue: self.queue); self.receive(id, connection, bytes: Data())
                 }
             }
             listener.start(queue: queue)
@@ -75,15 +75,15 @@ import Network
             Task { @MainActor in
                 guard let self else { connection.cancel(); return }
                 var data = bytes; if let part { data.append(part) }
-                guard error == nil, data.count <= 32_768, !stopped else { connection.cancel(); return }
+                guard error == nil, data.count <= 32_768, !self.stopped else { connection.cancel(); return }
                 if let end = data.range(of: Data("\r\n\r\n".utf8)) {
                     let text = String(decoding: data[..<end.upperBound], as: UTF8.self)
-                    jobs[id] = Task { [weak self] in
+                    self.jobs[id] = Task { [weak self] in
                         defer { connection.cancel(); self?.jobs.removeValue(forKey: id); self?.connections.removeValue(forKey: id) }
                         do { try await self?.respond(connection, request: text) }
                         catch { try? await self?.send(connection, Data("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8)) }
                     }
-                } else if !done { receive(id, connection, bytes: data) } else { connection.cancel() }
+                } else if !done { self.receive(id, connection, bytes: data) } else { connection.cancel() }
             }
         }
     }

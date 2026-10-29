@@ -125,9 +125,11 @@ final class FlowTests: XCTestCase {
         // Remove chrome so a real touch reaches the gesture recognizer.
         let gesture = app.otherElements["player_gesture_area"]
         if app.buttons["player_lock"].exists { gesture.tap() }
+        let fixed = app.staticTexts["speed_check"].label
         gesture.press(forDuration: 1.1)
+        XCTAssertEqual(app.staticTexts["hold_count"].label, "1")
         XCTAssertFalse(app.staticTexts["hold_feedback"].exists)
-        XCTAssertTrue(["1×", "1.25×"].contains(app.staticTexts["speed_check"].label))
+        XCTAssertEqual(app.staticTexts["speed_check"].label, fixed)
         screenshot("10-hold-released")
     }
     func testFavoriteCanBeAddedAndRemoved() {

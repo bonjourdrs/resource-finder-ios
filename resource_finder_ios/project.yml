@@ -45,8 +45,6 @@ targets:
         NSLocalNetworkUsageDescription: 用于搜索并控制同一 Wi-Fi 内的电视，以及投屏时向电视传输视频。
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
-          NSAllowsArbitraryLoadsForMedia: true
-          NSAllowsLocalNetworking: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.resourcefinder.ios

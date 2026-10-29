@@ -68,6 +68,10 @@ enum PlayerPanel: String, Identifiable { case speed, episodes, lines, more, cast
     private func back() { if locked { wake() } else if panel != nil { panel = nil; wake() } else if landscape { fullscreen() } else { dismiss() } }
     private func select(_ target: MediaSelection, offline: String? = nil, begin: Bool = true, position: Double? = nil) {
         guard !locked else { return }
+        if target.id == selection.id && offlineID == offline {
+            beginSession = begin; startAt = position ?? 0; panel = nil
+            Task { await load() }; return
+        }
         model.stop(); if let offlineID { downloads.unprotect(offlineID) }
         beginSession = begin; startAt = position; offlineID = offline
         selection = target; panel = nil; setLock(false); wake()
@@ -120,7 +124,7 @@ enum PlayerPanel: String, Identifiable { case speed, episodes, lines, more, cast
         if dragStart == nil { dragStart = (model.position, UIScreen.main.brightness, model.player.volume); interacting = true; chrome = false }
         guard let initial = dragStart else { return }
         if abs(delta.x) > abs(delta.y) {
-            preview = min(max(0, initial.0 + delta.x / max(1, size.width) * 120), model.duration)
+            preview = min(max(0, initial.0 + Double(delta.x / max(1, size.width)) * 120), model.duration)
             feedback = TVXML.time(preview ?? 0) + " / " + TVXML.time(model.duration)
         } else if start.x < size.width / 2 {
             let value = min(max(0.02, initial.1 - delta.y / max(1, size.height)), 1); UIScreen.main.brightness = value; feedback = "亮度 \(Int(value * 100))%"
@@ -206,6 +210,7 @@ enum PlayerPanel: String, Identifiable { case speed, episodes, lines, more, cast
                 if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
                     Text(model.ready && model.position >= 0.5 ? "已解码并推进" : "等待解码").font(.caption).accessibilityIdentifier("decode_check")
                     Text("\(model.speed.formatted())×").accessibilityIdentifier("speed_check")
+                    Text(String(model.holdCount)).accessibilityIdentifier("hold_count")
                 }
                 #endif
             }.padding(20)
@@ -234,7 +239,7 @@ enum PlayerPanel: String, Identifiable { case speed, episodes, lines, more, cast
                 Text("轻点显隐控制，双击播放暂停；横滑调整进度，左侧上下滑调亮度，右侧调本机视频音量。").font(.caption)
             }
         case .cast:
-            CastScreen(selection: selection, service: service, downloads: downloads, watch: watch, offlineID: offlineID, position: model.position, pauseLocal: model.pause)
+            CastScreen(selection: selection, service: service, downloads: downloads, watch: watch, offlineID: offlineID, position: model.position, pauseLocal: model.pause, returnToPhone: { target, position in select(target, offline: offlineID, position: position) })
         }
     }
     private func episodeButton(_ episode: VideoEpisode) -> some View {

@@ -11,6 +11,7 @@ import SwiftUI
     @Published private(set) var playing = false
     @Published private(set) var speed: Float
     @Published private(set) var holding = false
+    @Published private(set) var holdCount = 0
     private var fixedSpeed: Float
     private let defaults: UserDefaults
     private var itemObservation: NSKeyValueObservation?
@@ -109,7 +110,7 @@ import SwiftUI
     }
     func hold() {
         guard ready, player.timeControlStatus == .playing, !holding else { return }
-        holding = true
+        holding = true; holdCount += 1
         let saved = defaults.float(forKey: "playback.holdSpeed")
         applySpeed(max(fixedSpeed, [Float(2), 2.5, 3].contains(saved) ? saved : 2))
     }
