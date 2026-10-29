@@ -28,7 +28,7 @@ import SwiftUI
     private var startupTask: Task<Void, Never>?
     private var relay: MediaRelay?
     private(set) var source: PlaybackSource?
-    var offlineKeyResponses: Int { contentKeys?.responseCount ?? 0 }
+    var offlineKeyResponses: Int { (contentKeys?.responseCount ?? 0) + (relay?.keyResponses ?? 0) }
     var onEnded: (() -> Void)?
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults

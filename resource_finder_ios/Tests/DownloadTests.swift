@@ -53,11 +53,18 @@ import UIKit
         }
         XCTAssertTrue(offline.url.isFileURL); XCTAssertTrue(offline.offline)
         if kind == .hls {
-            XCTAssertEqual(try HLSKeys.read(XCTUnwrap(offline.offlineKeys)).count, path.hasPrefix("aes_") ? 1 : 0)
+            if let root = offline.offlineRoot {
+                let entry = try XCTUnwrap(restored.entries.first)
+                let job = try HLSCacheJob.read(root, attempt: entry.attempt)
+                XCTAssertEqual(job.resources.filter(\.key).count, path.hasPrefix("aes_") ? 1 : 0)
+            } else { XCTAssertEqual(try HLSKeys.read(XCTUnwrap(offline.offlineKeys)).count, path.hasPrefix("aes_") ? 1 : 0) }
 
         }
         if eraseKeys {
-            try JSONEncoder().encode([String: Data]()).write(to: XCTUnwrap(offline.offlineKeys))
+            if let root = offline.offlineRoot {
+                let entry = try XCTUnwrap(restored.entries.first), job = try HLSCacheJob.read(root, attempt: entry.attempt)
+                for key in job.resources where key.key { try FileManager.default.removeItem(at: root.appendingPathComponent(key.name)) }
+            } else { try JSONEncoder().encode([String: Data]()).write(to: XCTUnwrap(offline.offlineKeys)) }
             do { _ = try await restored.offlineSource(selection.id); XCTFail("Missing keys must fail before opening a player") }
             catch { XCTAssertEqual(restored.entries.first?.state, .failed) }
             XCTAssertEqual(service.playbackCalls, 0); XCTAssertEqual(service.downloadCalls, 1)
@@ -84,16 +91,14 @@ import UIKit
         XCTAssertNil(player.error); XCTAssertEqual(service.playbackCalls, 0)
         player.stop()
         if kind == .hls {
-            if !eraseKeys {
-                let converted = try await CastModel().exportOffline(offline)
-                defer { try? FileManager.default.removeItem(at: converted.url) }
-                let asset = AVURLAsset(url: converted.url)
-                let playable = try await asset.load(.isPlayable)
-                XCTAssertTrue(playable)
-                let image = try AVAssetImageGenerator(asset: asset).copyCGImage(at: .zero, actualTime: nil)
-                XCTAssertEqual(image.width, 320)
-                print("offline-TV-export: \(path) local MP4 decoded with origin stopped")
-            }
+            let relay = try MediaRelay(source: offline, allowedPeer: "127.0.0.1")
+            let url = try await relay.start()
+            let tvPlayer = AVPlayer(url: url), tvSurface = try PlayerTestSurface(player: tvPlayer)
+            defer { tvPlayer.pause(); tvSurface.close(); relay.stop() }
+            tvPlayer.play()
+            try await wait({ tvPlayer.currentTime().seconds >= 0.5 && tvSurface.layer.isReadyForDisplay }, timeout: 10)
+            if path.hasPrefix("aes_") { XCTAssertGreaterThan(relay.keyResponses, 0) }
+            print("offline-TV-relay: \(path) decoded from standard local HLS with origin stopped")
         }
         try restored.remove(selection.id)
         XCTAssertTrue(restored.entries.isEmpty)
@@ -125,6 +130,26 @@ import UIKit
         XCTAssertEqual(center.entries.first?.state, .complete, center.entries.first?.error ?? "")
         XCTAssertEqual(service.downloadCalls, 2)
         try center.remove(selection.id)
+    }
+    func testPortableHLSPauseResumeKeepsIntentAndCompletes() async throws {
+        var files = try LocalFixtureServer.bundledFiles()
+        let packet = Data([0x47, 0x1f, 0xff, 0x10]) + Data(repeating: 0xff, count: 184)
+        for name in ["/hls_part0.ts", "/hls_part1.ts", "/hls_part2.ts"] { for _ in 0..<4000 { files[name]!.append(packet) } }
+        let server = try LocalFixtureServer(files: files, chunkDelay: 0.01); try await server.start(); defer { server.stop() }
+        let root = directory(), center = DownloadCenter(root: root, namespace: "hls.pause.\(UUID())")
+        defer { center.shutdown(); try? FileManager.default.removeItem(at: root) }
+        let service = DownloadTestService(sources: [PlaybackSource(url: server.baseURL.appendingPathComponent("hls_index.m3u8"), kind: .hls)])
+        center.configure(service: service); center.enqueue([selection])
+        try await wait { (center.entries.first?.bytes ?? 0) > 1024 || center.entries.first?.state == .failed }
+        XCTAssertEqual(center.entries.first?.state, .transferring, center.entries.first?.error ?? "")
+        center.pause(selection.id); try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(center.entries.first?.state, .paused)
+        XCTAssertEqual(DownloadCenter(root: root).entries.first?.state, .paused)
+        center.resume(selection.id)
+        try await wait { center.entries.first?.state == .complete || center.entries.first?.state == .failed }
+        XCTAssertEqual(center.entries.first?.state, .complete, center.entries.first?.error ?? "")
+        let local = try await center.offlineSource(selection.id)
+        XCTAssertNotNil(local.offlineRoot); XCTAssertEqual(service.downloadCalls, 1)
     }
     func testPausedIntentPersistsAndQueueDoesNotDuplicate() throws {
         let root = directory(), center = DownloadCenter(root: root, namespace: "rf.tests.\(UUID().uuidString)")

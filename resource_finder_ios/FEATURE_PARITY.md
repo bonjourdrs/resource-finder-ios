@@ -15,14 +15,14 @@ Android reference: `bonjourdrs/codex-test` commit `9dca0368d3ccf07bee461d6501100
 | Queue / lines | Select episodes in player, same-source line switch only on unique matching episode; keep playback on mismatch |
 | DLNA | SSDP discovery, explicit description URL, SOAP load/play/pause/stop/seek/volume/status, natural auto-next; failures visible |
 | Header media | Validate and apply required headers; stream MP4 ranges and rewrite HLS playlists/keys/segments through bounded relay |
-| Casting transport | Direct URL or TV-restricted LAN relay; offline MP4 relay; offline HLS uses system export only if supported |
+| Casting transport | Direct URL or TV-restricted LAN relay; offline MP4 relay; offline HLS relays standard cached manifests, keys and media directly |
 
 ## Platform differences requiring physical acceptance
 
 - iOS SSDP multicast requires an Apple-approved multicast entitlement in the signing profile. Manual unicast device addition needs only Local Network permission. Unsigned CI packages cannot grant an entitlement. See Signing/README.md.
-- iOS cannot run an arbitrary HTTP relay indefinitely after suspension. Header-adapted HLS downloads pause with a visible explanation in background; foreground continuation retries a fresh descriptor. Ordinary native MP4/HLS transfers retain existing background support. LAN relay casting explicitly stops when the app backgrounds. Android's foreground service can keep its relay alive.
+- iOS cannot run an arbitrary HTTP relay indefinitely after suspension. LAN relay casting explicitly stops when the app backgrounds; Android's foreground service can keep its relay alive. New HLS downloads use direct native background resource transfers, including required headers, and need no background local proxy.
 - Right-side gesture changes this video's volume on iOS. Hardware volume still controls the system. Brightness is restored when leaving playback.
-- Offline HLS TV export depends on AVFoundation's export support for the downloaded package. An unsupported export is an explicit error, never a network fallback. Online HLS/MP4 and offline MP4 have independent relay paths.
+- New HLS downloads use a standard portable cache shared by offline playback and DLNA. Existing 0.3 native movpkg caches remain playable on the phone; they need a user-requested re-download for DLNA. AVFoundation MP4 export was tested and failed, so it is not used as a claimed feature. No offline opening or casting silently resolves an online descriptor.
 - iOS uses AirPlay in addition to DLNA. Real TV codecs, Wi-Fi isolation, entitlement grant and physical iPhone rotation must be verified after signing. Simulator SOAP fixtures are protocol evidence, not household-TV evidence.
 - Both builds reject proprietary engines and remote JavaScript parsing pages. A catalog descriptor is not proof every provider movie can decode.
 

@@ -1,24 +1,26 @@
-# Resource Finder iOS — 0.4.0 candidate
+# Resource Finder iOS — 0.4 candidate
 
-Native SwiftUI + AVFoundation app with ten source adapters: Jianpian, KKYS, Hongniu, 360, Modu, Feifan, Liangzi, Baofeng, Wujin and Tianya. All sources start enabled; the last five are explicitly experimental. No custom backend is required.
+Native SwiftUI + AVFoundation app for iOS 17+. Ten source adapters: Jianpian, KKYS, Hongniu, 360, Modu, Feifan, Liangzi, Baofeng, Wujin and Tianya. All start enabled; the last five are experimental. Catalog responses, media descriptors and actual playback are separate evidence.
 
-0.3 ported Android beta3's provider registry, independent source switches, catalog/media status records, manual rechecks, source-scoped favorites/watch/download identities and numeric next-episode rules. Unsupported and empty MacCMS groups remain visible with reasons. A catalog response or resolved descriptor never means an entire movie was played successfully. Public adapters read bounded HTTPS JSON/HTML data, do not execute remote JavaScript, refresh descriptors before playback/download, and validate HLS manifests before handing them to AVFoundation. Searches have a per-source 30-second deadline. Tianya requests reserve spaced slots with a five-second interval.
-
-The 0.2 download-only picker, persistent native background MP4/HLS queue, local-only playback, removable search history and watch resume remain available. 0.4 adds a single custom chrome layer over AVPlayerLayer, lock, temporary long-press speed, seek/brightness/player-volume gestures, persistent speed, in-player queues/lines and DLNA. See FEATURE_PARITY.md for the exact behavior and remaining physical/platform acceptance items.
+0.4 adds one playback control layer, persistent 0.5–3× speeds, temporary long-press acceleration, screen lock, seek/brightness/player-volume gestures, in-player queues and uniquely matched line switching. Portrait actions stay below 16:9 video; landscape panels overlay from the right and chrome hides after three seconds. See [acceptance contract](FEATURE_PARITY.md).
 
 ## Download and offline behavior
 
-- `URLSessionDownloadTask` saves progressive media and `AVAssetDownloadURLSession` saves HLS media, including ordinary identity AES-128 HLS. A bounded manifest/key preflight saves the public 16-byte keys in protected per-download records. Offline playback activates a memory-only URLProtocol response for exactly those saved key URLs, then releases it when the player closes. Download preparation explicitly bypasses replay so a concurrent download gets fresh keys. Generated clear/encrypted samples are tested; DRM/FairPlay is not implemented. The HLS downloader requests the asset's media selections and validates `assetCache.isPlayableOffline` before declaring completion.
-- Download-only never creates an AVPlayer or a watch record. The queue deduplicates by work/line/episode and starts at most two tasks. Default policy is Wi-Fi only. System background scheduling can defer work; force-quitting the app cancels native transfers. Interrupted tasks reconnect if still present, otherwise expose retry; intentionally paused tasks stay paused.
-- Background sessions use fixed identifiers, reconnect after relaunch and hold Apple's completion handler until local validation and metadata persistence finish. A persisted attempt ID rejects callbacks from removed/retried tasks. Retry resolves a fresh descriptor and discards the old partial package rather than mixing media versions.
-- HLS packages stay at the system-provided URL. Progressive files live in Application Support; media/metadata are excluded from backup. The queue stores sandbox-relative references/file bookmarks and catalog selections. Protected key records also retain their key URIs so the system can match requests. Resolved movie URLs and API credentials are not stored in queue metadata.
-- Offline opening never calls the catalog resolver. Missing/incomplete assets are rejected and become retryable; no online fallback. Download removal is blocked while that item is playing. System-purged HLS packages are detected on opening.
-- Native download progress remains below 100% until playable local content is validated. HLS progress measures the union of loaded time ranges. Catalog errors, transfer failure, storage problems and incomplete local media remain distinct failures.
-- Watch history is written only after playback advances. Deleting an active watch record suppresses later writes from that session; an explicit new playback starts recording again. Automatic next episode keeps the current line and does not revive a suppressed watch record.
+- Download-only never creates an AVPlayer or records watch history. Tasks are source/line/episode scoped and deduplicated; at most two assets transfer at once.
+- MP4 uses native background URLSession downloads. New HLS uses standard cached playlists, public identity AES-128 keys and media resources. Each media object uses a native background URLSession task with required headers. Up to two objects per HLS asset transfer concurrently.
+- Master/rendition playlists, URI attributes, keys and byte-range references are rewritten to local cache names. A byte-range resource is saved in full once so its offsets remain valid. Media playlists must be finite VOD. Variable URLs, DRM and steering/interstitial extensions without an offline adapter are rejected explicitly.
+- Per-attempt cache metadata and protected key files persist before transfer. Native tasks reconnect after relaunch. Intentionally paused tasks remain paused; failed retries resolve a fresh descriptor and discard old partial media. Default policy is Wi-Fi only. System scheduling, force quit and low storage still require physical-device acceptance.
+- Completion requires every expected cache object and playable local media, not just a transfer callback. Local opening checks files before playback. Missing keys/media become retryable errors; offline opening never calls the catalog resolver or silently falls back online.
+- Local HLS playback serves only the validated cache through a random-token loopback relay. DLNA serves the same standard cache through a peer-restricted Wi-Fi relay. No private Apple package parsing or failed MP4 export path is used. Older 0.3 movpkg downloads remain phone-playable; re-download is required to make them portable for DLNA.
+- Search deletion, favorites and watch history remain source-scoped and backward compatible with old JP records. Deleting a watch record suppresses later writes from that session; auto-next does not revive it.
 
-## Build and run
+## Casting
 
-On a Mac with Xcode and XcodeGen:
+DLNA includes SSDP discovery, explicit LAN description URL addition, SOAP load/play/pause/stop/seek/volume/status, TV episode selection, auto-next, return-to-phone position and controls after closing the player. SOAP responses and media relays have separate tests. Only a successful TV status response is reported as TV playback.
+
+SSDP discovery on a physical iPhone requires Apple's approved multicast entitlement and a matching signing profile; see [signing notes](Signing/README.md). Manual unicast device addition needs Local Network permission. AirPlay is also available where the media route is compatible. iOS LAN relays require the app in the foreground and stop explicitly when backgrounded. TV codec support and Wi-Fi isolation require household-TV testing.
+
+## Build and install
 
 ```sh
 brew install xcodegen
@@ -27,36 +29,18 @@ xcodegen generate
 open ResourceFinder.xcodeproj
 ```
 
-Select an iPhone simulator and Run. Normal launches use the real provider; no sample results are substituted for network errors. Debug UI tests explicitly launch with `--ui-testing` and use a generated 20-second color video. Those screenshots establish the interface and local playback flow, not real provider-video decoding.
+`swift test` runs portable source/persistence contracts. `bash scripts/ci.sh` runs native unit and UI tests against synthetic MP4/HLS/AES fixtures. Normal launches always use real services; test fixtures require the explicit DEBUG UI-test flag.
 
-`swift test` runs portable adapter contracts (Swift 6.0+ on macOS; the Linux test dependency uses Swift 6.2+). `swift run ProviderProbe` separately checks public catalog/detail/descriptor responses and writes `build/provider-probe.json`; network failures are reported rather than replaced by sample data.
+`bash scripts/build_ipa.sh` archives iPhoneOS arm64 with signing disabled and packages `build/Resource-Finder-iOS-0.4.0-Unsigned.ipa`, a checksum and platform metadata. This IPA needs signing/provisioning before installation. It is not a TestFlight export. The separate simulator app cannot install on an iPhone. See [Windows installation instructions](../INSTALL_CN.md).
 
-`bash scripts/build_ipa.sh` archives the Release target for a generic iPhoneOS device with signing disabled, checks the platform and arm64 executable, and creates `build/Resource-Finder-iOS-0.4.0-Unsigned.ipa` plus a SHA-256 file. This is an unsigned device package and requires suitable signing/provisioning before installation. It is not an App Store/TestFlight export. The workflow uploads it even if later simulator tests fail; packaging alone does not establish test acceptance.
+No Apple credentials or signing certificates are configured. Public macOS CI uses a standard hosted runner.
 
-`bash scripts/ci.sh` runs unit and UI tests, exports screenshots and a locally ad-hoc-signed simulator `.app` ZIP. The simulator ZIP cannot install on an iPhone. Device installation requires a configured Apple team, bundle identifier, signing and a suitable distribution method. The simulator uses local ad-hoc signing so its normal Keychain identity can be tested; this uses no Apple developer certificate. No signing secrets, personal Apple credentials, uploads to TestFlight, or App Store submission are performed by this foundation workflow.
+## Transport rules and validation scope
 
-## Transport and media rules
+- Public adapters validate bounded HTTPS JSON/HTML and do not execute remote JavaScript. API crypto vectors match the independent Python/Android contract. A locally generated Keychain guest identity is used; no user account is embedded.
+- Media descriptors must match the chosen work/line/episode and reject fallback. Required media headers are applied through public networking APIs; CR/LF/control injection and API identity/hop-by-hop headers are rejected or excluded. HTTP media is allowed to match Android.
+- Provider switches and observations do not auto-disable a failed/untested source. Catalog availability is independent of decoding, region restrictions and all-line availability.
+- Synthetic tests cover actual local decode, seek, origin-stopped HLS/AES playback and TV media relay, queue persistence, native background task plumbing, SOAP protocol and player UI gestures. These do not prove physical iPhone signing, mobile network scheduling, every provider movie, every TV codec or multicast entitlement approval.
+- iOS volume gestures affect the current video; hardware buttons control system volume. Brightness and orientation/idle state are restored when playback closes. Background audio and PiP are outside the Android feature scope.
 
-- CryptoKit request signing/AES-GCM matches the independent Python/Android contract vectors. Signs the exact encoded URI; authenticated responses bind method, URI, status, timestamp, request nonce and installation identity. API redirects are rejected.
-- The normal guest identity is locally generated and retained in a device-only Keychain item; no account login or identity rotation on failure. Catalog and playback URLs are not stored in history/favorites.
-- Requests are cancellable and stale searches/episode loads cannot replace new selections. Works are identified by source plus numeric provider work ID, not title. Old saved entries without a source ID remain Jianpian, preserving the existing `jp:` download identities. Playback descriptors must match the selected line and episode and may not report fallback.
-- HLS and progressive HTTP(S) use AVPlayer with a single app-owned control layer. User-Agent uses the public asset option; other required media headers use a token-scoped streaming HTTP relay. HLS URI attributes, child playlists, keys, segments and MP4 byte ranges are forwarded. No undocumented AVURLAsset option is used. Proprietary engines and remote JS parser pages remain unsupported on both platforms.
-- ATS permits HTTP media to match Android. Production catalog adapters still enforce their own HTTPS/public-host policy and API redirect rules. Descriptor headers reject CR/LF injection and exclude guest API identity/hop-by-hop fields. Neither version bypasses provider authorization or region restrictions.
-- Ordinary native downloads retain background transfers. HLS requiring the header relay pauses in the background with an explicit reason and can retry on return. iOS LAN relay casting stops when backgrounded; direct casting is independent of the phone's media stream. See Signing/README.md for the physical-device multicast capability.
-- Playback pauses when leaving the foreground; closing releases the item, observers, relay, touch hold, orientation mask and screen/idle settings. Background audio and PiP are not part of Android feature parity.
-
-## Validation
-
-The workflow runs deterministic protocol, identity, persistence, stale-result, line-selection and actual synthetic-video decoding/playback tests, UI search/history/favorites/rotation flows, and a separate live public catalog/descriptor probe using the same Swift transport. The live probe does not request movie media bytes; a descriptor does not prove that AVPlayer can decode a provider video. Provider availability is reported independently from deterministic CI.
-
-Phone playback, physical-device signing/install, iPad layout, live HLS/codec/header compatibility and household TVs remain acceptance items. Simulator tests cannot establish physical iPhone/TV parity. Platform differences are enumerated in FEATURE_PARITY.md.
-
-Download validation includes actual native MP4, HLS and AES-128 HLS transfers from a loopback server, then shuts down that origin and checks rendered local playback, progression, seek and deletion. HLS playback tests attach an actual AVPlayerLayer; a separate online HLS baseline verifies the fixture. AES validation requires the production player to consume a saved key response. A scoped replay test verifies cleanup and fresh-network bypass during download preparation. UI tests cover download-only with no player launch, relaunch with a completed download, and local playback. Real provider episodes are not downloaded by CI. Native scheduling, system process termination, force-quit recovery and low-space behavior on a physical phone remain device acceptance items.
-
-## Validation status
-
-Local Swift 6.2.3 on Linux compiled the production portable core and passed 11 XCTest contracts, including cross-source favorites/watch deletion and legacy identity decoding. All 27 app/native-test Swift files passed syntax parsing. Linux checks do not type-check SwiftUI/AVFoundation/CommonCrypto branches and are not a substitute for an Xcode build.
-
-The live Swift probe resolved matching sample HLS descriptors/manifests on KKYS, Hongniu, 360 and Modu. Feifan, Liangzi and Wujin catalogs/details matched; Baofeng and Tianya returned invalid JSON in that attempt. These observations do not establish physical-device playback or every-line availability.
-
-Full Xcode build, native simulator acceptance and device IPA generation are tracked by this repository's workflow. Generated unsigned device packages require signing/provisioning before installation. A build artifact and passed native tests are separate acceptance milestones.
+The prior 0.3 baseline passed 45 tests. Current 0.4 acceptance is tracked by the latest workflow; do not reuse older successful test counts for changed app code.

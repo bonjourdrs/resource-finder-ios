@@ -164,7 +164,7 @@ enum PlayerPanel: String, Identifiable { case speed, episodes, lines, more, cast
     private func video(wide: Bool) -> some View {
         ZStack {
             NativePlayer(player: model.player).allowsHitTesting(false).accessibilityIdentifier("native_player")
-            PlayerTouchSurface(locked: locked, tap: { chrome.toggle(); scheduleHide() }, doubleTap: { model.toggle(); wake() }, hold: { active in
+            PlayerTouchSurface(locked: locked, canHold: model.playing, tap: { chrome.toggle(); scheduleHide() }, doubleTap: { model.toggle(); wake() }, hold: { active in
                 if active { model.hold(); chrome = false } else { model.releaseHold(); scheduleHide() }
             }, cancel: { model.releaseHold(); dragStart = nil; preview = nil; feedback = nil; interacting = false; wake() }, drag: drag)
             if chrome && !locked && panel == nil {

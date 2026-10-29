@@ -17,6 +17,7 @@ import Network
     private var connections: [UUID: NWConnection] = [:]
     private var base: URL?
     private var stopped = false
+    private(set) var keyResponses = 0
     init(source: PlaybackSource, address: String = "127.0.0.1", allowedPeer: String? = nil, allowsCellular: Bool = true) throws {
         self.source = source; self.address = address; self.allowedPeer = allowedPeer
         let parameters = NWParameters.tcp
@@ -65,6 +66,12 @@ import Network
     private func route(_ url: URL, playlist: Bool = false) throws -> URL {
         guard let base, routes.count < 20_000, url.user == nil, url.password == nil,
               url.isFileURL || ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { throw CatalogError.unsupportedMedia }
+        if url.isFileURL {
+            if let root = source.offlineRoot {
+                let path = root.standardizedFileURL.path, prefix = path.hasSuffix("/") ? path : path + "/"
+                guard url.standardizedFileURL.path.hasPrefix(prefix), ["m3u8", "ts", "m4s", "mp4", "aac", "vtt", "key", "bin"].contains(url.pathExtension) else { throw DownloadFailure.incomplete }
+            } else { guard url == source.url else { throw DownloadFailure.incomplete } }
+        }
         if let key = reverse[url] { return base.appendingPathComponent(key) }
         let ext = playlist || url.pathExtension.lowercased() == "m3u8" ? "m3u8" : url.pathExtension.isEmpty ? "bin" : url.pathExtension
         let key = "\(token)/\(routes.count).\(ext)"; routes[key] = url; reverse[url] = key
@@ -149,6 +156,15 @@ import Network
         }.joined(separator: "\n")
     }
     private func file(_ connection: NWConnection, url: URL, range: String?, head: Bool) async throws {
+        if url.pathExtension == "m3u8" {
+            let data = try Data(contentsOf: url)
+            guard data.count <= 2_097_152, let text = String(data: data, encoding: .utf8) else { throw DownloadFailure.incomplete }
+            let body = Data(try rewrite(text, base: url).utf8)
+            try await send(connection, Data("HTTP/1.1 200 OK\r\nContent-Type: application/vnd.apple.mpegurl\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8))
+            if !head { try await send(connection, body) }; return
+        }
+        if url.pathExtension == "key" { keyResponses += 1 }
+        let type = url.pathExtension == "ts" ? "video/mp2t" : url.pathExtension == "mp4" ? "video/mp4" : url.pathExtension == "vtt" ? "text/vtt" : "application/octet-stream"
         let size = (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.int64Value ?? 0
         var lower: Int64 = 0, upper = size - 1
         if let range {
@@ -161,7 +177,7 @@ import Network
             try await send(connection, Data("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */\(size)\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8)); return
         }
         let extra = range == nil ? "" : "Content-Range: bytes \(lower)-\(upper)/\(size)\r\n"
-        try await send(connection, Data("HTTP/1.1 \(range == nil ? "200 OK" : "206 Partial Content")\r\nContent-Type: video/mp4\r\nAccept-Ranges: bytes\r\nContent-Length: \(upper - lower + 1)\r\n\(extra)Connection: close\r\n\r\n".utf8))
+        try await send(connection, Data("HTTP/1.1 \(range == nil ? "200 OK" : "206 Partial Content")\r\nContent-Type: \(type)\r\nAccept-Ranges: bytes\r\nContent-Length: \(upper - lower + 1)\r\n\(extra)Connection: close\r\n\r\n".utf8))
         guard !head else { return }
         let file = try FileHandle(forReadingFrom: url); defer { try? file.close() }; try file.seek(toOffset: UInt64(lower))
         var remaining = upper - lower + 1

@@ -58,7 +58,7 @@ import SwiftUI
                 if useRelay {
                     guard let local = DLNAClient.localAddress() else { throw DLNAError.command("请连接与电视相同的 Wi-Fi 后重试") }
                     var prepared = source
-                    if source.offline && source.kind == .hls {
+                    if source.offline && source.kind == .hls && source.offlineRoot == nil {
                         // Use the documented export capability, never parse Apple's private movpkg layout.
                         prepared = try await exportOffline(source); preparedFile = prepared.url
                     }
@@ -66,7 +66,7 @@ import SwiftUI
                     ownedRelay = proxy; url = try await proxy.start()
                 }
                 try Task.checkCancellation(); guard generation == token else { throw CancellationError() }
-                try await client.load(tv, url: url, title: selection.work.title + " · " + selection.episode.name, kind: source.offline && source.kind == .hls ? .progressive : source.kind)
+                try await client.load(tv, url: url, title: selection.work.title + " · " + selection.episode.name, kind: source.offline && source.kind == .hls && source.offlineRoot == nil ? .progressive : source.kind)
                 try Task.checkCancellation(); guard generation == token else { ownedRelay?.stop(); return }
                 if position > 0 { _ = try? await client.action(tv, "Seek", arguments: [("Unit", "REL_TIME"), ("Target", TVXML.time(position))]) }
                 releaseMedia(); relay = ownedRelay; exportURL = preparedFile
@@ -82,16 +82,9 @@ import SwiftUI
         }
     }
     func exportOffline(_ source: PlaybackSource) async throws -> PlaybackSource {
-        let keys = try source.offlineKeys.map(OfflineContentKeys.init)
-        let asset = AVURLAsset(url: source.url)
-        guard let job = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough), job.supportedFileTypes.contains(.mp4) else { throw DLNAError.command("系统无法将这份离线 HLS 导出给电视。请在影片详情使用在线投屏或 AirPlay。") }
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("rf-cast-\(UUID().uuidString).mp4")
-        export = job; defer { if export === job { export = nil } }; job.shouldOptimizeForNetworkUse = true; job.outputURL = url; job.outputFileType = .mp4
-        await job.export()
-        withExtendedLifetime(keys) {}
-        guard job.status == .completed else { try? FileManager.default.removeItem(at: url); throw DLNAError.command("系统无法导出这份离线视频，请使用在线投屏。") }
-        export = nil
-        return PlaybackSource(url: url, offline: true)
+        // Older native .movpkg caches cannot be exported by AVFoundation even
+        // when the preset lists MP4. Never parse Apple's private package layout.
+        throw DLNAError.command("这份旧版离线 HLS 需要重新下载，才能用于局域网投屏。")
     }
     private func monitor(_ tv: TVDevice, token: UUID) {
         pollTask?.cancel()

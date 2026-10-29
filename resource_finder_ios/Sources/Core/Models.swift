@@ -61,12 +61,13 @@ struct PlaybackSource {
     var offline: Bool = false
     var offlineKeys: URL?
     var headers: [String: String] = [:]
+    var offlineRoot: URL? = nil
     var requestHeaders: [String: String] {
         var value = headers
         if let userAgent { value["User-Agent"] = userAgent }
         return value
     }
-    var requiresRelay: Bool { !headers.isEmpty }
+    var requiresRelay: Bool { !headers.isEmpty || offlineRoot != nil }
 }
 enum MediaKind: String, Codable, Sendable { case hls, progressive }
 struct MediaDescriptor: Decodable {

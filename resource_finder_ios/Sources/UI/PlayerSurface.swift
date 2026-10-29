@@ -12,45 +12,67 @@ import SwiftUI
         if rotate { scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) }
     }
 }
-/// Native SwiftUI hit testing avoids competing UIKit representable surfaces.
+/// One touch stream owns tap, double tap, hold and drag, like Android's pointer loop.
 @MainActor struct PlayerTouchSurface: View {
     let locked: Bool
+    let canHold: Bool
     let tap: () -> Void
     let doubleTap: () -> Void
     let hold: (Bool) -> Void
     let cancel: () -> Void
     let drag: (CGPoint, CGPoint, CGSize, Bool) -> Void
     @GestureState private var contact = false
-    @GestureState private var moving = false
+    @State private var down = false
+    @State private var dragging = false
     @State private var accelerated = false
+    @State private var lastTap: TimeInterval = 0
+    @State private var holdTask: Task<Void, Never>?
     var body: some View {
         GeometryReader { geometry in
             Color.clear.contentShape(Rectangle())
                 .accessibilityElement(children: .ignore)
                 .accessibilityIdentifier("player_gesture_area")
                 .accessibilityLabel("视频画面，轻点显隐控制，双击播放暂停")
-                .gesture(TapGesture(count: 2).exclusively(before: TapGesture()).onEnded { value in
-                    switch value { case .first: if !locked { doubleTap() }; case .second: tap() }
-                })
-                .simultaneousGesture(LongPressGesture(minimumDuration: 0.5, maximumDistance: 12)
-                    .sequenced(before: DragGesture(minimumDistance: 0))
-                    .updating($contact) { value, state, _ in
-                        switch value { case .first(let pressing): state = pressing; case .second(let pressing, _): state = pressing }
-                    }
+                .gesture(DragGesture(minimumDistance: 0)
+                    .updating($contact) { _, state, _ in state = true }
                     .onChanged { value in
-                        if case .second(true, _) = value, !locked, !accelerated { accelerated = true; hold(true) }
+                        if !down {
+                            down = true
+                            if !locked && canHold {
+                                holdTask = Task {
+                                    try? await Task.sleep(for: .milliseconds(500))
+                                    guard !Task.isCancelled, down, !dragging, !locked else { return }
+                                    accelerated = true; hold(true)
+                                }
+                            }
+                        }
+                        if !locked && !accelerated && (abs(value.translation.width) > 12 || abs(value.translation.height) > 12) {
+                            dragging = true; holdTask?.cancel()
+                            drag(value.startLocation, CGPoint(x: value.translation.width, y: value.translation.height), geometry.size, false)
+                        }
                     }
-                    .onEnded { _ in endHold() }, including: locked ? .none : .all)
-                .simultaneousGesture(DragGesture(minimumDistance: 12)
-                    .updating($moving) { _, state, _ in state = true }
-                    .onChanged { value in if !locked && !accelerated { drag(value.startLocation, CGPoint(x: value.translation.width, y: value.translation.height), geometry.size, false) } }
-                    .onEnded { value in if !locked && !accelerated { drag(value.startLocation, CGPoint(x: value.translation.width, y: value.translation.height), geometry.size, true) } }, including: locked ? .none : .all)
+                    .onEnded { value in
+                        holdTask?.cancel()
+                        if locked { tap() }
+                        else if accelerated { hold(false) }
+                        else if dragging { drag(value.startLocation, CGPoint(x: value.translation.width, y: value.translation.height), geometry.size, true) }
+                        else {
+                            let now = ProcessInfo.processInfo.systemUptime
+                            if lastTap > 0 && now - lastTap < 0.35 { lastTap = 0; doubleTap() }
+                            else { lastTap = now; tap() }
+                        }
+                        down = false; dragging = false; accelerated = false
+                    })
+                .onChange(of: geometry.size) { _, _ in cancelContact() }
         }
-        .onChange(of: contact) { _, value in if !value { endHold() } }
-        .onChange(of: moving) { _, value in if !value { cancel() } }
-        .onChange(of: locked) { _, _ in endHold(); cancel() }
+        .onChange(of: contact) { _, value in if !value && down { cancelContact() } }
+        .onChange(of: locked) { _, _ in cancelContact() }
+        .onDisappear { holdTask?.cancel() }
     }
-    private func endHold() { if accelerated { accelerated = false; hold(false) } }
+    private func cancelContact() {
+        holdTask?.cancel(); if accelerated { hold(false) }
+        down = false; dragging = false; accelerated = false; cancel()
+    }
 }
 
 @MainActor struct PlayerChrome: View {
