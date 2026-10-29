@@ -17,26 +17,26 @@ import SwiftUI
     let tap: () -> Void
     let doubleTap: () -> Void
     let hold: (Bool) -> Void
+    let cancel: () -> Void
     let drag: (CGPoint, CGPoint, CGSize, Bool) -> Void
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeUIView(context: Context) -> UIView {
-        let view = UIView(); view.backgroundColor = .clear; view.isAccessibilityElement = true
+        let view = UIView(); install(on: view, coordinator: context.coordinator); return view
+    }
+    func install(on view: UIView, coordinator: Coordinator) {
+        view.backgroundColor = .clear; view.isAccessibilityElement = true
         view.accessibilityIdentifier = "player_gesture_area"; view.accessibilityLabel = "视频画面，轻点显示或隐藏控制，双击播放暂停"
-        let single = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.single))
-        let double = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.double)); double.numberOfTapsRequired = 2
+        let single = UITapGestureRecognizer(target: coordinator, action: #selector(Coordinator.single))
+        let double = UITapGestureRecognizer(target: coordinator, action: #selector(Coordinator.double)); double.numberOfTapsRequired = 2
         single.require(toFail: double)
-        let hold = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.longPress)); hold.minimumPressDuration = 0.5; hold.allowableMovement = 12
-        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pan)); pan.maximumNumberOfTouches = 1
+        let hold = UILongPressGestureRecognizer(target: coordinator, action: #selector(Coordinator.longPress)); hold.minimumPressDuration = 0.5; hold.allowableMovement = 12
+        let pan = UIPanGestureRecognizer(target: coordinator, action: #selector(Coordinator.pan)); pan.maximumNumberOfTouches = 1
         pan.require(toFail: hold)
         [single, double, hold, pan].forEach { view.addGestureRecognizer($0) }
-        context.coordinator.doubleRecognizer = double; context.coordinator.holdRecognizer = hold; context.coordinator.panRecognizer = pan
-        return view
+        coordinator.doubleRecognizer = double; coordinator.holdRecognizer = hold; coordinator.panRecognizer = pan
     }
-    func updateUIView(_ view: UIView, context: Context) {
-        context.coordinator.parent = self
-        context.coordinator.doubleRecognizer?.isEnabled = !locked; context.coordinator.holdRecognizer?.isEnabled = !locked; context.coordinator.panRecognizer?.isEnabled = !locked
-    }
-    static func dismantleUIView(_ view: UIView, coordinator: Coordinator) { coordinator.parent.hold(false) }
+    func updateUIView(_ view: UIView, context: Context) { context.coordinator.update(self) }
+    // Teardown must not mutate SwiftUI state. PlaybackScreen.onDisappear ends holds.
     @MainActor final class Coordinator: NSObject {
         var parent: PlayerGestures
         weak var doubleRecognizer: UITapGestureRecognizer?
@@ -44,13 +44,17 @@ import SwiftUI
         weak var panRecognizer: UIPanGestureRecognizer?
         private var origin = CGPoint.zero
         init(_ parent: PlayerGestures) { self.parent = parent }
+        func update(_ value: PlayerGestures) {
+            parent = value; doubleRecognizer?.isEnabled = !value.locked; holdRecognizer?.isEnabled = !value.locked; panRecognizer?.isEnabled = !value.locked
+        }
         @objc func single() { parent.tap() }
         @objc func double() { guard !parent.locked else { return }; parent.doubleTap() }
         @objc func longPress(_ g: UILongPressGestureRecognizer) { if g.state == .began { parent.hold(!parent.locked) }; if [.ended, .cancelled, .failed].contains(g.state) { parent.hold(false) } }
         @objc func pan(_ g: UIPanGestureRecognizer) {
             guard !parent.locked, let view = g.view else { return }
+            if [.cancelled, .failed].contains(g.state) { parent.hold(false); parent.cancel(); return }
             if g.state == .began { origin = g.location(in: view); parent.hold(false) }
-            if [.began, .changed, .ended, .cancelled, .failed].contains(g.state) {
+            if [.began, .changed, .ended].contains(g.state) {
                 parent.drag(origin, g.translation(in: view), view.bounds.size, [.ended, .cancelled, .failed].contains(g.state))
             }
         }

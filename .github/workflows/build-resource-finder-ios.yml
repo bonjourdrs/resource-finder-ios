@@ -78,5 +78,6 @@ jobs:
             resource_finder_ios/build/simulator-signing.txt
             resource_finder_ios/build/simulator-entitlements.plist
             resource_finder_ios/build/screenshots
+            resource_finder_ios/build/crashes
             resource_finder_ios/build/Tests.xcresult
           retention-days: 3

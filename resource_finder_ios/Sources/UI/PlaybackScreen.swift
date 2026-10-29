@@ -32,9 +32,9 @@ enum PlayerPanel: String, Identifiable { case speed, episodes, lines, more, cast
     @StateObject private var model = PlaybackModel()
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
-    init(selection: MediaSelection, service: any CatalogService, queue: [VideoEpisode] = [], episodeTotal: Int = 0, offlineID: String? = nil) {
+    init(selection: MediaSelection, service: any CatalogService, queue: [VideoEpisode] = [], episodeTotal: Int = 0, offlineID: String? = nil, position: Double? = nil) {
         self.service = service; _queue = State(initialValue: queue); _episodeTotal = State(initialValue: episodeTotal)
-        _selection = State(initialValue: selection); _offlineID = State(initialValue: offlineID)
+        _selection = State(initialValue: selection); _offlineID = State(initialValue: offlineID); _startAt = State(initialValue: position)
     }
     private var nextOffline: DownloadEntry? {
         let matching = downloads.entries.filter { $0.state == .complete && $0.selection.work.sourceKey == selection.work.sourceKey && $0.selection.lineKey == selection.lineKey }
@@ -163,10 +163,9 @@ enum PlayerPanel: String, Identifiable { case speed, episodes, lines, more, cast
     }
     private func video(wide: Bool) -> some View {
         ZStack {
-            NativePlayer(player: model.player).accessibilityIdentifier("native_player")
-            PlayerGestures(locked: locked, tap: { chrome.toggle(); scheduleHide() }, doubleTap: { model.toggle(); wake() }, hold: { active in
+            NativePlayer(player: model.player, gestures: PlayerGestures(locked: locked, tap: { chrome.toggle(); scheduleHide() }, doubleTap: { model.toggle(); wake() }, hold: { active in
                 if active { model.hold(); chrome = false } else { model.releaseHold(); scheduleHide() }
-            }, drag: drag)
+            }, cancel: { model.releaseHold(); dragStart = nil; preview = nil; feedback = nil; interacting = false; wake() }, drag: drag)).accessibilityIdentifier("native_player")
             if chrome && !locked && panel == nil {
                 PlayerChrome(model: model, landscape: wide, title: title, hasNext: hasNext && !busy, close: back, fullscreen: fullscreen, lock: { setLock(true) }, cast: { open(.cast) }, speed: { open(.speed) }, episodes: { open(.episodes) }, more: { open(.more) }, next: { next(userInitiated: true) }, interact: { interacting = $0; wake() })
             }

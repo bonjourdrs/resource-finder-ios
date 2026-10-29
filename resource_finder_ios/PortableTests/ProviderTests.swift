@@ -122,6 +122,12 @@ final class ProviderTests: XCTestCase {
 }
 
 final class PlaybackPolicyTests: XCTestCase {
+    func testRequiredHeadersRejectCRLFPairsAndPreserveReferer() throws {
+        let bad = MediaDescriptor(url: "https://media.example/a.mp4", protocolName: "mp4", headers: ["Referer": "a\r\nInjected: yes"], episodeKey: "e", line: .init(key: "l"))
+        XCTAssertThrowsError(try bad.mediaHeaders())
+        let valid = MediaDescriptor(url: bad.url, protocolName: "mp4", headers: ["Referer": "https://origin.example/", "X-JP-Nonce": "excluded", "Host": "excluded"], episodeKey: "e", line: .init(key: "l"))
+        XCTAssertEqual(try valid.mediaHeaders(), ["Referer": "https://origin.example/"])
+    }
     func testAutoHideAndAndroidSpeedContract() {
         XCTAssertEqual(PlaybackPolicy.speeds, [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3])
         XCTAssertEqual(PlaybackPolicy.hideDelay, 3)

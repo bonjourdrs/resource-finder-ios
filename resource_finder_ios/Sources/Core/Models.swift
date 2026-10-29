@@ -99,7 +99,7 @@ struct MediaDescriptor: Decodable {
             let lower = key.lowercased()
             if lower.hasPrefix("x-jp-") || excluded.contains(lower) { continue }
             guard !key.isEmpty, key.utf8.allSatisfy({ (33...126).contains($0) && ![40,41,60,62,64,44,59,58,92,34,47,91,93,63,61,123,125].contains($0) }),
-                  !value.contains("\r"), !value.contains("\n"), value.utf8.count <= 8192 else { throw CatalogError.unsupportedHeaders }
+                  value.utf8.allSatisfy({ ($0 == 9 || $0 >= 32) && $0 != 127 }), value.utf8.count <= 8192 else { throw CatalogError.unsupportedHeaders }
             result[key] = value
         }
         return result

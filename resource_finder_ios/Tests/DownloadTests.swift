@@ -54,6 +54,8 @@ import UIKit
         XCTAssertTrue(offline.url.isFileURL); XCTAssertTrue(offline.offline)
         if kind == .hls {
             XCTAssertEqual(try HLSKeys.read(XCTUnwrap(offline.offlineKeys)).count, path.hasPrefix("aes_") ? 1 : 0)
+            let exportable = AVAssetExportSession(asset: AVURLAsset(url: offline.url), presetName: AVAssetExportPresetPassthrough)?.supportedFileTypes.contains(.mp4) ?? false
+            print("offline-TV-export-capability: \(path) MP4=\(exportable)")
         }
         if eraseKeys {
             try JSONEncoder().encode([String: Data]()).write(to: XCTUnwrap(offline.offlineKeys))

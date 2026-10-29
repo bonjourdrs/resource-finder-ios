@@ -43,6 +43,11 @@ import SwiftUI
     let service: any CatalogService
     @EnvironmentObject private var store: LibraryStore
     @EnvironmentObject private var watch: WatchStore
+    @EnvironmentObject private var downloads: DownloadCenter
+    @ObservedObject private var cast = CastModel.shared
+    @State private var showCast = false
+    @State private var phonePosition: Double?
+    @State private var phoneOfflineID: String?
     @State private var watchPlayback: MediaSelection?
     @State private var selectedTab = 0
     @State private var historyQuery: String?
@@ -64,7 +69,7 @@ import SwiftUI
                     if !watch.records.isEmpty {
                         Section("继续观看") {
                             ForEach(watch.records) { record in
-                                Button { watchPlayback = record.selection } label: {
+                                Button { phonePosition = nil; phoneOfflineID = nil; watchPlayback = record.selection } label: {
                                     VStack(alignment: .leading) { Text(record.selection.work.title); Text(record.selection.episode.name + " · " + String(Int(record.position)) + " 秒").font(.caption).foregroundStyle(.secondary) }
                                 }.swipeActions { Button("删除观看", role: .destructive) { watch.remove(record.id) } }
                             }
@@ -85,7 +90,18 @@ import SwiftUI
                 NavigationStack { ProviderSettingsScreen(service: multi) }.tabItem { Label("设置", systemImage: "gearshape") }.tag(4)
             }
         }
-        .fullScreenCover(item: $watchPlayback) { selection in PlaybackScreen(selection: selection, service: service) }
+        .safeAreaInset(edge: .bottom) {
+            if let tv = cast.device { Button { phoneOfflineID = cast.offlineID; showCast = true } label: { Label(tv.name + " · " + cast.status, systemImage: "tv").font(.caption).padding(8).frame(maxWidth: .infinity) }.background(.regularMaterial) }
+        }
+        .sheet(isPresented: $showCast) {
+            if let selected = cast.selection {
+                NavigationStack {
+                    CastScreen(selection: selected, service: service, downloads: downloads, watch: watch, offlineID: phoneOfflineID, position: cast.position, pauseLocal: {}, returnToPhone: { target, position in showCast = false; phonePosition = position; watchPlayback = target })
+                        .navigationTitle("电视投屏").toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { showCast = false } } }
+                }
+            }
+        }
+        .fullScreenCover(item: $watchPlayback) { selection in PlaybackScreen(selection: selection, service: service, offlineID: phoneOfflineID, position: phonePosition) }
     }
 }
 @MainActor struct SearchScreen: View {

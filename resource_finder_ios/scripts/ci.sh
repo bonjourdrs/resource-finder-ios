@@ -16,6 +16,14 @@ xcodebuild -project ResourceFinder.xcodeproj -scheme ResourceFinder -configurati
   -derivedDataPath build/DerivedData -resultBundlePath build/Tests.xcresult \
   -parallel-testing-enabled NO -test-timeouts-enabled YES \
   -maximum-test-execution-time-allowance 180 "$@" test 2>&1 | tee build/test.log || task_test_status=$?
+python3 - <<'PY_CRASH'
+from pathlib import Path
+import shutil
+root=Path.home()/'Library/Logs/DiagnosticReports'
+dest=Path('build/crashes'); dest.mkdir(exist_ok=True)
+for path in root.rglob('ResourceFinder*.ips'):
+    shutil.copy2(path,dest/path.name)
+PY_CRASH
 if [ -d build/Tests.xcresult ]; then
   xcrun xcresulttool export attachments --path build/Tests.xcresult --output-path build/screenshots || true
   xcrun xcresulttool get test-results summary --path build/Tests.xcresult --format json > build/test-summary.json || true

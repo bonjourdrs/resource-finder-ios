@@ -24,7 +24,7 @@ import SwiftUI
     private var service: (any CatalogService)?
     private var watch: WatchStore?
     private var downloads: DownloadCenter?
-    private var offlineID: String?
+    private(set) var offlineID: String?
     private var export: AVAssetExportSession?
     private var exportURL: URL?
     init(client: DLNAClient? = nil) { self.client = client ?? DLNAClient() }

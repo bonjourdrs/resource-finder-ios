@@ -140,11 +140,23 @@ import SwiftUI
 /// One control layer: AVPlayerLayer draws video; SwiftUI owns all playback chrome.
 @MainActor struct NativePlayer: UIViewRepresentable {
     let player: AVPlayer
+    var gestures: PlayerGestures? = nil
     final class Surface: UIView {
+        let gesturePad = UIView()
         override class var layerClass: AnyClass { AVPlayerLayer.self }
         var videoLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+        override init(frame: CGRect) {
+            super.init(frame: frame); gesturePad.frame = bounds; gesturePad.autoresizingMask = [.flexibleWidth, .flexibleHeight]; addSubview(gesturePad)
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     }
-    func makeUIView(context: Context) -> Surface { let v = Surface(); v.backgroundColor = .black; v.videoLayer.videoGravity = .resizeAspect; return v }
-    func updateUIView(_ view: Surface, context: Context) { view.videoLayer.player = player }
-    static func dismantleUIView(_ view: Surface, coordinator: ()) { view.videoLayer.player = nil }
+    final class Coordinator { var gestures: PlayerGestures.Coordinator? }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeUIView(context: Context) -> Surface {
+        let v = Surface(frame: .zero); v.backgroundColor = .black; v.videoLayer.videoGravity = .resizeAspect
+        if let gestures { let handler = PlayerGestures.Coordinator(gestures); context.coordinator.gestures = handler; gestures.install(on: v.gesturePad, coordinator: handler) }
+        return v
+    }
+    func updateUIView(_ view: Surface, context: Context) { view.videoLayer.player = player; if let gestures { context.coordinator.gestures?.update(gestures) } }
+    static func dismantleUIView(_ view: Surface, coordinator: Coordinator) { view.videoLayer.player = nil; view.gesturePad.gestureRecognizers?.forEach { view.gesturePad.removeGestureRecognizer($0) }; coordinator.gestures = nil }
 }
