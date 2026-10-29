@@ -126,7 +126,7 @@ import SwiftUI
                     }.font(.subheadline).frame(height: 36)
                 }
             }.padding(.horizontal, 12).padding(.bottom, 6).background(LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom))
-        }.foregroundStyle(.white).buttonStyle(.plain).accessibilityIdentifier("player_controls")
+        }.foregroundStyle(.white).buttonStyle(.plain)
     }
     private func icon(_ system: String, _ label: String, _ id: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) { Image(systemName: system).frame(width: 44, height: 44).contentShape(Rectangle()) }.accessibilityLabel(label).accessibilityIdentifier(id)

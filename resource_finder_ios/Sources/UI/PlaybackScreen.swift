@@ -181,7 +181,7 @@ enum PlayerPanel: String, Identifiable { case speed, episodes, lines, more, cast
                         HStack { Text(panelTitle(value)).font(.headline); Spacer(); Button("关闭面板") { panel = nil; wake() }.accessibilityIdentifier("close_panel") }.padding()
                         panelContent(value)
                     }.frame(width: min(380, UIScreen.main.bounds.width * 0.5)).background(Color(.systemBackground))
-                }.accessibilityIdentifier("player_panel")
+                }
             }
         }.background(.black).clipped()
     }
