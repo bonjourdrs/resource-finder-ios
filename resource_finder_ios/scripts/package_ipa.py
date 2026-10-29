@@ -11,7 +11,7 @@ assert info['CFBundleIdentifier']=='com.resourcefinder.ios', 'Unexpected applica
 assert info.get('DTPlatformName')=='iphoneos', 'An iPhoneOS archive is required'
 assert 'iPhoneOS' in info.get('CFBundleSupportedPlatforms',[]), 'Simulator app cannot become a device IPA'
 version=info['CFBundleShortVersionString']
-assert re.fullmatch(r'\d+\.\d+\.\d+',version), 'Invalid version'
+assert re.fullmatch(r'\d+\.\d+\.\d+',version), f'Invalid version: {version!r}'
 executable=app/info['CFBundleExecutable']
 architectures=subprocess.check_output(['xcrun','lipo','-archs',str(executable)],text=True).split()
 assert 'arm64' in architectures, 'Device executable must include arm64'

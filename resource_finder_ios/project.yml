@@ -30,6 +30,8 @@ targets:
       path: Generated/Info.plist
       properties:
         CFBundleDisplayName: 资源搜索
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
