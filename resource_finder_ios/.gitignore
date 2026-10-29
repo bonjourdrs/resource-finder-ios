@@ -1,0 +1,10 @@
+build/
+Generated/
+*.xcodeproj/
+*.xcresult/
+.DS_Store
+Sources/UI/Assets.xcassets/
+
+.build/
+.swiftpm/
+__pycache__/

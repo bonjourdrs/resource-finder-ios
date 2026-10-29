@@ -1,0 +1,82 @@
+name: Build Resource Finder iOS
+on:
+  push:
+    branches: [main]
+    paths: ['resource_finder_ios/**', '.github/workflows/build-resource-finder-ios.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: resource-finder-ios-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  ios:
+    env:
+      RF_UNIT_DIAGNOSTICS: 'false'
+    runs-on: macos-15
+    timeout-minutes: 50
+    defaults:
+      run:
+        working-directory: resource_finder_ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare Xcode project generator
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+        run: |
+          if ! command -v xcodegen >/dev/null; then brew install xcodegen; fi
+          swift --version
+      - name: Test portable source adapters
+        run: |
+          mkdir -p build
+          set -o pipefail
+          swift test --jobs 4 2>&1 | tee build/provider-tests.log
+      - name: Archive device app and package unsigned IPA
+        run: bash scripts/build_ipa.sh
+      - name: Run native unit and UI tests on iPhone simulator
+        run: bash scripts/ci.sh
+      - name: Probe real Jianpian public catalog using Swift transport
+        if: success()
+        continue-on-error: true
+        run: |
+          swiftc -parse-as-library -swift-version 5 Sources/Core/JianpianCrypto.swift Sources/Core/JianpianClient.swift Sources/Core/Models.swift Sources/Core/ProviderRegistry.swift Sources/Core/CatalogProtocol.swift Sources/Core/CatalogService.swift scripts/LiveProbe.swift -o build/live-probe
+          build/live-probe
+      - name: Probe additional public sources
+        if: success()
+        continue-on-error: true
+        run: swift run ProviderProbe
+      - name: Upload unsigned device IPA (requires signing before installation)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-iOS-0.3.0-Unsigned
+          path: |
+            resource_finder_ios/build/Resource-Finder-iOS-0.3.0-Unsigned.ipa
+            resource_finder_ios/build/Resource-Finder-iOS-0.3.0-Unsigned.sha256
+            resource_finder_ios/build/device-package.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload simulator app
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-iOS-0.3-Simulator
+          path: |
+            resource_finder_ios/build/Resource-Finder-iOS-0.3-Simulator.zip
+            resource_finder_ios/build/Resource-Finder-iOS-0.3-Simulator.sha256
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload validation reports and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-iOS-0.3-Validation
+          path: |
+            resource_finder_ios/build/*.log
+            resource_finder_ios/build/*.json
+            resource_finder_ios/build/xcode-version.txt
+            resource_finder_ios/build/simulator-signing.txt
+            resource_finder_ios/build/simulator-entitlements.plist
+            resource_finder_ios/build/screenshots
+            resource_finder_ios/build/Tests.xcresult
+          retention-days: 3

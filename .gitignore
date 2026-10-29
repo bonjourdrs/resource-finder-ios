@@ -1,0 +1,14 @@
+.DS_Store
+**/.build/
+**/.swiftpm/
+**/build/
+**/Generated/
+**/*.xcodeproj/
+**/*.xcresult/
+**/__pycache__/
+**/Sources/UI/Assets.xcassets/
+*.p12
+*.p8
+*.mobileprovision
+.env
+.env.*
