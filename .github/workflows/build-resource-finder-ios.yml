@@ -33,6 +33,17 @@ jobs:
           swift test --jobs 4 2>&1 | tee build/provider-tests.log
       - name: Archive device app and package unsigned IPA
         run: bash scripts/build_ipa.sh
+      - name: Upload unsigned device IPA (requires signing before installation)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-iOS-0.3.0-Unsigned
+          path: |
+            resource_finder_ios/build/Resource-Finder-iOS-0.3.0-Unsigned.ipa
+            resource_finder_ios/build/Resource-Finder-iOS-0.3.0-Unsigned.sha256
+            resource_finder_ios/build/device-package.json
+          if-no-files-found: warn
+          retention-days: 7
       - name: Run native unit and UI tests on iPhone simulator
         run: bash scripts/ci.sh
       - name: Probe real Jianpian public catalog using Swift transport
@@ -45,17 +56,6 @@ jobs:
         if: success()
         continue-on-error: true
         run: swift run ProviderProbe
-      - name: Upload unsigned device IPA (requires signing before installation)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Resource-Finder-iOS-0.3.0-Unsigned
-          path: |
-            resource_finder_ios/build/Resource-Finder-iOS-0.3.0-Unsigned.ipa
-            resource_finder_ios/build/Resource-Finder-iOS-0.3.0-Unsigned.sha256
-            resource_finder_ios/build/device-package.json
-          if-no-files-found: warn
-          retention-days: 7
       - name: Upload simulator app
         if: success()
         uses: actions/upload-artifact@v4
