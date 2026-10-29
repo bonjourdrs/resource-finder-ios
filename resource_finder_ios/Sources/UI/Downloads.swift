@@ -106,6 +106,9 @@ enum DownloadFailure: LocalizedError {
             try folder.setResourceValues(values)
             if FileManager.default.fileExists(atPath: metadata.path) {
                 entries = try JSONDecoder().decode([DownloadEntry].self, from: Data(contentsOf: metadata))
+                for entry in entries where entry.portableHLS == true && (entry.state.active || entry.state == .paused) {
+                    hlsJobs[entry.id] = try? HLSCacheJob.read(hlsFolder(entry), attempt: entry.attempt)
+                }
             }
         } catch { metadataValid = false; storageError = "下载目录或任务记录无法读取，请检查存储空间。" }
     }
@@ -113,6 +116,8 @@ enum DownloadFailure: LocalizedError {
     func configure(service: any CatalogService) { self.service = service; activate() }
     func activate() {
         guard !activated else { return }; activated = true
+        DownloadBackgroundBridge.shared.begin(namespace + ".files")
+        DownloadBackgroundBridge.shared.begin(namespace + ".hls")
         events = DownloadEvents(owner: self)
         func configuration(_ suffix: String) -> URLSessionConfiguration {
             let value = URLSessionConfiguration.background(withIdentifier: namespace + suffix)
@@ -123,7 +128,11 @@ enum DownloadFailure: LocalizedError {
         }
         files = URLSession(configuration: configuration(".files"), delegate: events, delegateQueue: .main)
         streams = AVAssetDownloadURLSession(configuration: configuration(".hls"), assetDownloadDelegate: events, delegateQueue: .main)
-        Task { await reconcile() }
+        Task {
+            await reconcile()
+            DownloadBackgroundBridge.shared.end(namespace + ".files")
+            DownloadBackgroundBridge.shared.end(namespace + ".hls")
+        }
     }
     private func allTasks(_ session: URLSession) async -> [URLSessionTask] {
         await withCheckedContinuation { continuation in session.getAllTasks { continuation.resume(returning: $0) } }
@@ -133,6 +142,7 @@ enum DownloadFailure: LocalizedError {
         let streamTasks = await allTasks(streams)
         let existing = fileTasks + streamTasks
         for task in existing {
+            guard task.state != .completed, task.state != .canceling else { continue }
             guard let marker = marker(task), let entry = entries.first(where: { $0.id == marker.id && $0.attempt == marker.attempt }), entry.state != .complete else { task.cancel(); continue }
             guard let currentEntry = entries.first(where: { $0.id == entry.id && $0.attempt == entry.attempt }) else {
                 task.cancel(); continue
@@ -374,7 +384,7 @@ enum DownloadFailure: LocalizedError {
     fileprivate func downloadedAsset(_ task: AVAssetDownloadTask, location: URL) { rememberLocation(location, task: task) }
     fileprivate func completed(_ session: URLSession, task: URLSessionTask, error: Error?) {
         guard let marker = marker(task), current(marker.id, marker.attempt) else { return }
-        if let component = marker.component { completedHLS(marker, component: component, error: error); return }
+        if let component = marker.component { completedHLS(task, marker: marker, component: component, error: error); return }
         tasks.removeValue(forKey: marker.id)
         if let error {
             let value = error as NSError
@@ -428,6 +438,7 @@ enum DownloadFailure: LocalizedError {
         guard restored, let entry = entries.first(where: { $0.id == id }), entry.state == .transferring else { return }
         guard let job = hlsJobs[id] else { failHLS(id, DownloadFailure.incomplete); return }
         if job.finished { finishHLS(entry, job: job); return }
+        hlsTasks[id] = hlsTasks[id, default: [:]].filter { $0.value.state != .completed && $0.value.state != .canceling }
         let running = hlsTasks[id, default: [:]]
         var slots = max(0, 2 - running.count)
         for task in running.values where task.state == .suspended { task.resume() }
@@ -452,6 +463,7 @@ enum DownloadFailure: LocalizedError {
         }
     }
     private func downloadedHLSFile(_ task: URLSessionTask, marker: TaskMarker, component: String, location: URL) {
+        if let current = hlsTasks[marker.id]?[component], current.taskIdentifier != task.taskIdentifier { return }
         guard let entry = entries.first(where: { $0.id == marker.id }), entry.state == .transferring,
               var job = hlsJobs[marker.id], let index = job.resources.firstIndex(where: { $0.name == component }) else { return }
         do {
@@ -466,7 +478,8 @@ enum DownloadFailure: LocalizedError {
             hlsProgress[marker.id]?.removeValue(forKey: component); publishHLSProgress(marker.id); persist()
         } catch { failHLS(marker.id, error) }
     }
-    private func completedHLS(_ marker: TaskMarker, component: String, error: Error?) {
+    private func completedHLS(_ task: URLSessionTask, marker: TaskMarker, component: String, error: Error?) {
+        if let current = hlsTasks[marker.id]?[component], current.taskIdentifier != task.taskIdentifier { return }
         hlsTasks[marker.id]?.removeValue(forKey: component)
         guard let entry = entries.first(where: { $0.id == marker.id }), entry.state == .transferring else { return }
         if let error { failHLS(marker.id, error); return }
