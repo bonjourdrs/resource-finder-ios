@@ -8,4 +8,6 @@ Native SwiftUI + AVFoundation app for iOS 17 and later. Ten catalog adapters, so
 
 No Apple signing credentials are configured. SSDP auto-discovery on physical iOS requires Apple's approved multicast entitlement; manual device-description URL addition uses unicast. An iOS HTTP relay needs the app in the foreground. These are explicit platform constraints, not features silently reported as complete. Physical iPhone and household-TV acceptance remain after signing.
 
+[Windows signing and iPhone installation](INSTALL_CN.md) explains the required step after an unsigned build.
+
 [App documentation](resource_finder_ios/README.md) describes build and transport behavior. The prior 0.3 baseline passed 45 tests in [run 3](https://github.com/bonjourdrs/resource-finder-ios/actions/runs/40828283362); those results do not validate 0.4. Catalog and descriptor probes do not prove full-movie playback.
