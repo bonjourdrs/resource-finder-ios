@@ -35,6 +35,31 @@ import Network
         XCTAssertTrue(requests.contains { $0.contains("AVTransport:2#SetAVTransportURI") && $0.contains("x=1&amp;y=2") && $0.contains("A &amp;amp; &amp;lt;B&amp;gt;") })
         XCTAssertTrue(requests.contains { $0.contains("/volume HTTP/1.1") && $0.contains("<DesiredVolume>42</DesiredVolume>") })
     }
+    func testOldStopResponseCannotClearANewCastingSession() async throws {
+        let first = try TVFixtureServer(description: description(), stopDelay: 0.4), second = try TVFixtureServer(description: description())
+        try await first.start(); try await second.start(); defer { first.stop(); second.stop() }
+        let client = DLNAClient(allowLoopback: true)
+        // Both clients use the production SOAP path; neither test TV fetches a real video.
+        let cast = CastModel(client: client)
+        defer { client.close() }
+        let old = try await client.device(at: first.base.appendingPathComponent("description.xml")), replacement = try await client.device(at: second.base.appendingPathComponent("description.xml"))
+        let work = FixtureCatalogService.work, selected = MediaSelection(work: work, episode: .init(key: "1", index: 0, name: "第1集"), lineKey: "xl")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("cast-race-\(UUID())")
+        let downloads = DownloadCenter(root: root, namespace: "cast.tests.\(UUID())")
+        let suite = "cast.tests.\(UUID())", defaults = UserDefaults(suiteName: suite)!
+        defer { downloads.shutdown(); try? FileManager.default.removeItem(at: root); defaults.removePersistentDomain(forName: suite) }
+        let service = CastTestCatalog(), watch = WatchStore(defaults: defaults)
+        cast.connect(old, selection: selected, service: service, downloads: downloads, watch: watch, offlineID: nil, position: 0, forceRelay: false, pauseLocal: {})
+        for _ in 0..<150 { if cast.device?.transport == old.transport && !cast.busy { break }; try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(cast.device?.transport, old.transport)
+        let stop = Task { await cast.stop() }
+        try await Task.sleep(for: .milliseconds(80))
+        cast.connect(replacement, selection: selected, service: service, downloads: downloads, watch: watch, offlineID: nil, position: 0, forceRelay: false, pauseLocal: {})
+        for _ in 0..<150 { if cast.device?.transport == replacement.transport && !cast.busy { break }; try await Task.sleep(for: .milliseconds(20)) }
+        await stop.value
+        XCTAssertEqual(cast.device?.transport, replacement.transport)
+        await cast.stop()
+    }
     func testTimeParsingAndEscaping() {
         XCTAssertEqual(TVXML.seconds("12:34:56.5"), 45296.5); XCTAssertEqual(TVXML.seconds("NOT_IMPLEMENTED"), 0)
         XCTAssertEqual(TVXML.seconds("nan:00:00"), 0); XCTAssertEqual(TVXML.time(83.5), "00:01:23")
@@ -45,12 +70,13 @@ private final class TVFixtureServer {
     private let listener: NWListener
     private let queue = DispatchQueue(label: "rf.test.tv")
     private let description: Data
+    private let stopDelay: Double
     private let lock = NSLock()
     private var logged: [String] = []
     var requests: [String] { lock.lock(); defer { lock.unlock() }; return logged }
     private(set) var base: URL!
-    init(description: Data) throws {
-        self.description = description
+    init(description: Data, stopDelay: Double = 0) throws {
+        self.description = description; self.stopDelay = stopDelay
         let p = NWParameters.tcp; p.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any); listener = try NWListener(using: p)
     }
     func start() async throws {
@@ -89,7 +115,17 @@ private final class TVFixtureServer {
             body = Data("<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body>\(value)</s:Body></s:Envelope>".utf8)
         }
         let header = Data("HTTP/1.1 \(code) Response\r\nContent-Type: text/xml\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8)
-        connection.send(content: header + body, completion: .contentProcessed { _ in connection.cancel() })
+        let reply = header + body
+        if text.contains("#Stop"), stopDelay > 0 { queue.asyncAfter(deadline: .now() + stopDelay) { connection.send(content: reply, completion: .contentProcessed { _ in connection.cancel() }) } }
+        else { connection.send(content: reply, completion: .contentProcessed { _ in connection.cancel() }) }
     }
     func stop() { listener.cancel() }
+}
+
+@MainActor private final class CastTestCatalog: CatalogService {
+    func playback(_ selection: MediaSelection) async throws -> PlaybackSource { PlaybackSource(url: URL(string: "https://media.example/video.mp4")!) }
+    func search(_ query: String, page: Int) async throws -> [VideoWork] { [] }
+    func detail(_ id: Int64) async throws -> VideoWork { throw CatalogError.invalidRequest }
+    func manifest(_ id: Int64) async throws -> PlaybackManifest { throw CatalogError.invalidRequest }
+    func episodes(_ id: Int64, line: String, page: Int) async throws -> EpisodeResponse { throw CatalogError.invalidRequest }
 }

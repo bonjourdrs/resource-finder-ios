@@ -44,7 +44,7 @@ import SwiftUI
         } catch { self.error = error.localizedDescription }
     }
     func connect(_ tv: TVDevice, selection: MediaSelection, service: any CatalogService, downloads: DownloadCenter, watch: WatchStore, offlineID: String?, position: Double, forceRelay: Bool, pauseLocal: @escaping () -> Void, userInitiated: Bool = true) {
-        commandTask?.cancel(); pollTask?.cancel(); generation = UUID(); let token = generation
+        commandTask?.cancel(); pollTask?.cancel(); export?.cancelExport(); generation = UUID(); let token = generation
         busy = true; error = nil; status = "正在连接电视"; canSeek = true; canVolume = tv.rendering != nil
         commandTask = Task {
             var ownedRelay: MediaRelay?
@@ -65,6 +65,7 @@ import SwiftUI
                     let proxy = try MediaRelay(source: prepared, address: local, allowedPeer: tv.address)
                     ownedRelay = proxy; url = try await proxy.start()
                 }
+                try Task.checkCancellation(); guard generation == token else { throw CancellationError() }
                 try await client.load(tv, url: url, title: selection.work.title + " · " + selection.episode.name, kind: source.offline && source.kind == .hls ? .progressive : source.kind)
                 try Task.checkCancellation(); guard generation == token else { ownedRelay?.stop(); return }
                 if position > 0 { _ = try? await client.action(tv, "Seek", arguments: [("Unit", "REL_TIME"), ("Target", TVXML.time(position))]) }
@@ -85,7 +86,7 @@ import SwiftUI
         let asset = AVURLAsset(url: source.url)
         guard let job = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough), job.supportedFileTypes.contains(.mp4) else { throw DLNAError.command("系统无法将这份离线 HLS 导出给电视。请在影片详情使用在线投屏或 AirPlay。") }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("rf-cast-\(UUID().uuidString).mp4")
-        export = job; defer { export = nil }; job.shouldOptimizeForNetworkUse = true; job.outputURL = url; job.outputFileType = .mp4
+        export = job; defer { if export === job { export = nil } }; job.shouldOptimizeForNetworkUse = true; job.outputURL = url; job.outputFileType = .mp4
         await job.export()
         withExtendedLifetime(keys) {}
         guard job.status == .completed else { try? FileManager.default.removeItem(at: url); throw DLNAError.command("系统无法导出这份离线视频，请使用在线投屏。") }
@@ -125,13 +126,23 @@ import SwiftUI
     }
     func stopConfirmed() async -> Bool {
         guard let device else { return true }
-        do { _ = try await client.action(device, "Stop"); await stop(); return true }
-        catch { self.error = "未能确认电视停止，请先在电视端停止播放。"; return false }
+        let token = generation
+        do {
+            _ = try await client.action(device, "Stop")
+            guard generation == token else { return false }
+            clear(); return true
+        } catch { if generation == token { self.error = "未能确认电视停止，请先在电视端停止播放。" }; return false }
     }
     func stop() async {
-        generation = UUID(); commandTask?.cancel(); pollTask?.cancel(); export?.cancelExport(); busy = false
+        generation = UUID(); let token = generation
+        commandTask?.cancel(); pollTask?.cancel(); export?.cancelExport(); busy = false
         if let device { _ = try? await client.action(device, "Stop") }
-        releaseMedia(); device = nil; status = "未连接"; position = 0; duration = 0; error = nil; relaying = false
+        guard generation == token else { return }
+        clear()
+    }
+    private func clear() {
+        generation = UUID(); commandTask?.cancel(); pollTask?.cancel(); export?.cancelExport()
+        releaseMedia(); device = nil; status = "未连接"; position = 0; duration = 0; error = nil; relaying = false; busy = false
     }
     private func releaseMedia() {
         relay?.stop(); relay = nil
