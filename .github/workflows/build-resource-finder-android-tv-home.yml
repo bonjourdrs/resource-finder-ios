@@ -1,0 +1,92 @@
+name: Build Resource Finder 1.5 TV Home Alpha (free public runner)
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/build-resource-finder-android-tv-home.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: resource-finder-android-tv-home-alpha-gate
+  cancel-in-progress: true
+
+jobs:
+  android:
+    # Only the repository owner may run this privileged cross-repository build.
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Verify read-only source credential exists
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+        run: |
+          if [ -z "$PRIVATE_READ_TOKEN" ]; then
+            echo "::error::Missing Actions secret RF_PRIVATE_REPO_READ_TOKEN. Create a fine-grained PAT scoped ONLY to bonjourdrs/codex-test, Contents: read-only; save it as a repository Actions secret in resource-finder-ios. Do not paste it into this workflow or logs."
+            exit 1
+          fi
+
+      - name: Checkout the original PRIVATE Resource Finder source
+        uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: resource-finder-1.5-tv-home
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          sparse-checkout: |
+            resource_finder/android
+            v1_0/signing/resourcefinder_debug.keystore.b64
+          sparse-checkout-cone-mode: false
+
+      - name: Show private source revision (not source contents)
+        run: git -C private-source rev-parse HEAD
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Android SDK 36
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+          cache-disabled: true
+
+      - name: Restore stable signing key ONLY inside ephemeral runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/rf-existing-signer.keystore"
+          echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/rf-existing-signer.keystore" >> "$GITHUB_ENV"
+
+      - name: Android unit tests and APK build
+        working-directory: private-source/resource_finder/android
+        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+
+      - name: Verify in-place upgrade identity and original signing certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="private-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep "package: name='com.resourcefinder.standalone' versionCode='150' versionName='1.5.0-alpha1'"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" | grep -Fi 'Signer #1 certificate SHA-256 digest: 73878e388879a837760bb3c500ff415d0ce54f92cf36b8421557abcf98cfdcf4'
+          cp "$apk" Resource-Finder-v1.5.0-alpha1.apk
+          sha256sum Resource-Finder-v1.5.0-alpha1.apk > Resource-Finder-v1.5.0-alpha1.sha256
+
+      - name: Upload ONLY APK and checksum (never private checkout or key)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-v1.5.0-alpha1-android
+          path: |
+            Resource-Finder-v1.5.0-alpha1.apk
+            Resource-Finder-v1.5.0-alpha1.sha256
+          if-no-files-found: error
+          retention-days: 3
