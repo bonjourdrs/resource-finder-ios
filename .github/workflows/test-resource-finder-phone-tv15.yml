@@ -96,4 +96,4 @@ jobs:
             private-source/resource_finder/android/app/build/ui-validation
           retention-days: 3
 
-# Private project commit: 77fe4875a31aca25e123af68d1b5bd744207500d
+# Source revision check: e222085246368e681fc0939c0be99255480a7618
