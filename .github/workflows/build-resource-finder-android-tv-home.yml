@@ -91,5 +91,5 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-# Source revision check: c7b661e99cb0956a2c35b4b94da40b4e006a34fb
+# Source revision check: 69af40ad3c9b6d309034ff3d35b49c4d1ad74037
 # Build source from the already-private resource-finder-1.5-tv-home branch.
