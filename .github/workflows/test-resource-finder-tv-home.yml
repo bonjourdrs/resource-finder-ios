@@ -87,3 +87,5 @@ jobs:
             private-source/resource_finder/android/app/build/ui-validation
           if-no-files-found: warn
           retention-days: 3
+
+# Validate private source branch at revision 837fab87a38aa1c0388db53f4fb8c4b93144655c
