@@ -90,3 +90,5 @@ jobs:
             Resource-Finder-v1.5.0-alpha1.sha256
           if-no-files-found: error
           retention-days: 3
+
+# Source revision check: 0f6f1185cf696e722cba662821f6200128efdd7e
