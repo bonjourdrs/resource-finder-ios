@@ -19,7 +19,7 @@ jobs:
         with:
           name: BatteryLite-OnePlus13-v1.2-APK
           run-id: 42655753901
-          github-token: \${{ github.token }}
+          github-token: ${{ github.token }}
           path: batterylite
       - name: Verify APK checksum
         run: |
