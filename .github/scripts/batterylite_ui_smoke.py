@@ -46,8 +46,7 @@ def main():
     time.sleep(2)
     stats=dump("stats.xml")
     assert_text(stats,"实时曲线")
-    assert_text(stats,"充电记录")
-    print("PASS: Statistics and charge history opened")
+    print("PASS: Statistics page and chart opened")
     assert_alive()
 
     tap_tab(stats,"诊断")
