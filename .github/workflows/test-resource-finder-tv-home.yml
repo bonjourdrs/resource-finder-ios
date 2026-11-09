@@ -78,6 +78,7 @@ jobs:
           script: |
             RF_KEYSTORE_PATH="$RUNNER_TEMP/rf-existing-signer.keystore" RF_ANDROID_TEST_CLASS=com.resourcefinder.app.tv.TvAppDeviceTest bash private-source/resource_finder/android/ci-device-check.sh
             RF_KEYSTORE_PATH="$RUNNER_TEMP/rf-existing-signer.keystore" RF_ANDROID_TEST_CLASS=com.resourcefinder.app.tv.TvSidebarDeviceTest bash private-source/resource_finder/android/ci-device-check.sh
+            RF_KEYSTORE_PATH="$RUNNER_TEMP/rf-existing-signer.keystore" RF_ANDROID_TEST_CLASS=com.resourcefinder.app.tv.TvPlayerDeviceTest bash private-source/resource_finder/android/ci-device-check.sh
 
       - uses: actions/upload-artifact@v4
         if: always()
