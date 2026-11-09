@@ -2,7 +2,7 @@ name: BatteryLite 1.2 Android 15 UI smoke
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/test-battery-lite-v12.yml']
+    paths: ['.github/workflows/test-battery-lite-v12.yml', '.github/scripts/batterylite_ui_smoke.py']
   workflow_dispatch:
 
 permissions:
