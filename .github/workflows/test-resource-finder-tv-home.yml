@@ -1,4 +1,4 @@
-name: Validate Resource Finder TV Home Alpha (remote + screenshots)
+name: Validate Resource Finder 1.6 TV Experience Alpha (remote + screenshots)
 on:
   push:
     branches: [main]
@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: bonjourdrs/codex-test
-          ref: resource-finder-1.5-tv-home
+          ref: resource-finder-1.6-tv-experience
           token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
           path: private-source
           persist-credentials: false
@@ -75,12 +75,12 @@ jobs:
           disk-size: 4096M
           emulator-boot-timeout: 180
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: RF_KEYSTORE_PATH="$RUNNER_TEMP/rf-existing-signer.keystore" RF_ANDROID_TEST_CLASS=com.resourcefinder.app.tv.TvAppDeviceTest bash private-source/resource_finder/android/ci-device-check.sh
+          script: RF_KEYSTORE_PATH="$RUNNER_TEMP/rf-existing-signer.keystore" RF_ANDROID_TEST_PACKAGE=com.resourcefinder.app.tv bash private-source/resource_finder/android/ci-device-check.sh
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Resource-Finder-1.5-TV-remote-report
+          name: Resource-Finder-1.6-TV-remote-report
           path: |
             private-source/resource_finder/android/app/build/reports/androidTests
             private-source/resource_finder/android/app/build/outputs/androidTest-results
@@ -88,6 +88,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 3
 
-# Validate private source branch at revision 837fab87a38aa1c0388db53f4fb8c4b93144655c
+# Source revision check: fa6fba93cf24a4c0eadf684b3c594c9669397217
 
 # Source revision check: 9baec32c5556289ffae74b01e9e3c4650e8f6556
