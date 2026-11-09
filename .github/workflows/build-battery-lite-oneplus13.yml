@@ -1,4 +1,4 @@
-name: Build BatteryLite 1.1 OnePlus 13 APK (free public runner)
+name: Build BatteryLite 1.2 OnePlus 13 APK (stable signature)
 
 on:
   push:
@@ -37,14 +37,16 @@ jobs:
           token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
           path: private-source
           persist-credentials: false
-          sparse-checkout: battery_lite
-          sparse-checkout-cone-mode: true
+          sparse-checkout: |
+            battery_lite
+            v1_0/signing/resourcefinder_debug.keystore.b64
+          sparse-checkout-cone-mode: false
 
       - name: Check expected private source revision
         run: |
           actual=$(git -C private-source rev-parse HEAD)
           echo "Source revision: $actual"
-          test "$actual" = '38b12f26b66bee85b9b25b65237ab30865fc6809'
+          test "$actual" = 'b2c1507a9e4b2215d7f5a50b0bbecc055396dcfd'
 
       - uses: actions/setup-java@v5
         with:
@@ -60,6 +62,14 @@ jobs:
           gradle-version: '8.9'
           cache-disabled: true
 
+      - name: Restore stable existing signing identity in temporary storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/batterylite-stable.keystore"
+          echo "BL_KEYSTORE_PATH=$RUNNER_TEMP/batterylite-stable.keystore" >> "$GITHUB_ENV"
+
       - name: Unit tests and build BatteryLite APK
         working-directory: private-source/battery_lite
         run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug --stacktrace
@@ -70,18 +80,28 @@ jobs:
           set -euo pipefail
           apk="private-source/battery_lite/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$apk"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep "package: name='com.example.batterylite' versionCode='2' versionName='1.1'"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
-          cp "$apk" BatteryLite-OnePlus13-v1.1.apk
-          sha256sum BatteryLite-OnePlus13-v1.1.apk > BatteryLite-OnePlus13-v1.1.apk.sha256
-          cat BatteryLite-OnePlus13-v1.1.apk.sha256
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep "package: name='com.example.batterylite' versionCode='3' versionName='1.2'"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/apk-cert.txt"
+          grep -Fi 'Signer #1 certificate SHA-256 digest: 73878e388879a837760bb3c500ff415d0ce54f92cf36b8421557abcf98cfdcf4' "$RUNNER_TEMP/apk-cert.txt"
+          cp "$apk" BatteryLite-OnePlus13-v1.2.apk
+          sha256sum BatteryLite-OnePlus13-v1.2.apk > BatteryLite-OnePlus13-v1.2.apk.sha256
+          cat BatteryLite-OnePlus13-v1.2.apk.sha256
 
       - name: Upload APK and checksum only
         uses: actions/upload-artifact@v4
         with:
-          name: BatteryLite-OnePlus13-v1.1-APK
+          name: BatteryLite-OnePlus13-v1.2-APK
           path: |
-            BatteryLite-OnePlus13-v1.1.apk
-            BatteryLite-OnePlus13-v1.1.apk.sha256
+            BatteryLite-OnePlus13-v1.2.apk
+            BatteryLite-OnePlus13-v1.2.apk.sha256
           if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload unit test results for verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BatteryLite-OnePlus13-v1.2-unit-tests
+          path: private-source/battery_lite/app/build/test-results/testDebugUnitTest/
+          if-no-files-found: ignore
           retention-days: 30
