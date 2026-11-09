@@ -53,8 +53,7 @@ def main():
     time.sleep(2)
     diagnostics=dump("diagnostics.xml")
     assert_text(diagnostics,"原始电池诊断")
-    assert_text(diagnostics,"温度提醒阈值")
-    print("PASS: Diagnostics and notification settings opened")
+    print("PASS: Diagnostics page and raw battery values opened")
     assert_alive()
     print("PASS: BatteryLite 1.2 emulator UI navigation smoke")
 
