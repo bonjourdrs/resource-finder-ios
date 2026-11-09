@@ -1,4 +1,4 @@
-name: Build Resource Finder 1.5 TV Home Alpha (free public runner)
+name: Build Resource Finder 1.6 TV Experience Alpha (free public runner)
 
 on:
   push:
@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: bonjourdrs/codex-test
-          ref: resource-finder-1.5-tv-home
+          ref: resource-finder-1.6-tv-experience
           token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
           path: private-source
           persist-credentials: false
@@ -76,20 +76,20 @@ jobs:
         run: |
           set -euo pipefail
           apk="private-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk"
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep "package: name='com.resourcefinder.standalone' versionCode='150' versionName='1.5.0-alpha1'"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep "package: name='com.resourcefinder.standalone' versionCode='160' versionName='1.6.0-alpha1'"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" | grep -Fi 'Signer #1 certificate SHA-256 digest: 73878e388879a837760bb3c500ff415d0ce54f92cf36b8421557abcf98cfdcf4'
-          cp "$apk" Resource-Finder-v1.5.0-alpha1.apk
-          sha256sum Resource-Finder-v1.5.0-alpha1.apk > Resource-Finder-v1.5.0-alpha1.sha256
+          cp "$apk" Resource-Finder-v1.6.0-alpha1.apk
+          sha256sum Resource-Finder-v1.6.0-alpha1.apk > Resource-Finder-v1.6.0-alpha1.sha256
 
       - name: Upload ONLY APK and checksum (never private checkout or key)
         uses: actions/upload-artifact@v4
         with:
-          name: Resource-Finder-v1.5.0-alpha1-android
+          name: Resource-Finder-v1.6.0-alpha1-android
           path: |
-            Resource-Finder-v1.5.0-alpha1.apk
-            Resource-Finder-v1.5.0-alpha1.sha256
+            Resource-Finder-v1.6.0-alpha1.apk
+            Resource-Finder-v1.6.0-alpha1.sha256
           if-no-files-found: error
           retention-days: 3
 
 # Source revision check: ae33bab2759840a8f6355a150f8eead4860e4e68
-# Build source from the already-private resource-finder-1.5-tv-home branch.
+# Build source from the already-private resource-finder-1.6-tv-experience branch.
