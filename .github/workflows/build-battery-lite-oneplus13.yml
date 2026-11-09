@@ -1,4 +1,4 @@
-name: Build BatteryLite 1.2 OnePlus 13 APK (stable signature)
+name: Build BatteryLite 1.2 OnePlus 13 APK
 
 on:
   push:
@@ -62,14 +62,6 @@ jobs:
           gradle-version: '8.9'
           cache-disabled: true
 
-      - name: Restore stable existing signing identity in temporary storage
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/batterylite-stable.keystore"
-          echo "BL_KEYSTORE_PATH=$RUNNER_TEMP/batterylite-stable.keystore" >> "$GITHUB_ENV"
-
       - name: Unit tests and build BatteryLite APK
         working-directory: private-source/battery_lite
         run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug --stacktrace
@@ -82,7 +74,6 @@ jobs:
           test -s "$apk"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep "package: name='com.example.batterylite' versionCode='3' versionName='1.2'"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/apk-cert.txt"
-          grep -Fi 'Signer #1 certificate SHA-256 digest: 73878e388879a837760bb3c500ff415d0ce54f92cf36b8421557abcf98cfdcf4' "$RUNNER_TEMP/apk-cert.txt"
           cp "$apk" BatteryLite-OnePlus13-v1.2.apk
           sha256sum BatteryLite-OnePlus13-v1.2.apk > BatteryLite-OnePlus13-v1.2.apk.sha256
           cat BatteryLite-OnePlus13-v1.2.apk.sha256
