@@ -1,0 +1,98 @@
+name: BatteryLite 1.2 Android 15 UI smoke
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/test-battery-lite-v12.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  android-emulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Download verified BatteryLite APK
+        uses: actions/download-artifact@v4
+        with:
+          name: BatteryLite-OnePlus13-v1.2-APK
+          run-id: 42655753901
+          github-token: \${{ github.token }}
+          path: batterylite
+      - name: Verify APK checksum
+        run: |
+          cd batterylite
+          sha256sum -c BatteryLite-OnePlus13-v1.2.apk.sha256
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Boot Android 15 and test navigation
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          disk-size: 4096M
+          emulator-boot-timeout: 240
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -e
+            adb install batterylite/BatteryLite-OnePlus13-v1.2.apk
+            adb shell am start -W -n com.example.batterylite/.MainActivity
+            sleep 7
+            test -n "$(adb shell pidof com.example.batterylite | tr -d '\r')"
+            adb shell uiautomator dump /sdcard/dashboard.xml
+            adb pull /sdcard/dashboard.xml dashboard.xml
+            python3 - <<'PY'
+            import re, subprocess, xml.etree.ElementTree as ET
+            root=ET.parse("dashboard.xml").getroot()
+            text=[n.attrib.get("text","") for n in root.iter("node")]
+            assert any("电池仪表" in x for x in text),text
+            assert any("电压" in x for x in text),text
+            print("PASS: Battery dashboard")
+            found=[n for n in root.iter("node") if n.attrib.get("text")=="统计"]
+            assert found, "Statistics tab missing"
+            x1,y1,x2,y2=map(int,re.findall(r"\d+",found[0].attrib["bounds"]))
+            subprocess.run(["adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//2)],check=True)
+            PY
+            sleep 2
+            adb shell uiautomator dump /sdcard/stats.xml
+            adb pull /sdcard/stats.xml stats.xml
+            python3 - <<'PY'
+            import re, subprocess, xml.etree.ElementTree as ET
+            root=ET.parse("stats.xml").getroot()
+            text=[n.attrib.get("text","") for n in root.iter("node")]
+            assert any("实时曲线" in x for x in text),text
+            print("PASS: Statistics and chart")
+            found=[n for n in root.iter("node") if n.attrib.get("text")=="诊断"]
+            assert found, "Diagnostics tab missing"
+            x1,y1,x2,y2=map(int,re.findall(r"\d+",found[0].attrib["bounds"]))
+            subprocess.run(["adb","shell","input","tap",str((x1+x2)//2),str((y1+y2)//2)],check=True)
+            PY
+            sleep 2
+            adb shell uiautomator dump /sdcard/diagnostics.xml
+            adb pull /sdcard/diagnostics.xml diagnostics.xml
+            python3 - <<'PY'
+            import xml.etree.ElementTree as ET
+            root=ET.parse("diagnostics.xml").getroot()
+            text=[n.attrib.get("text","") for n in root.iter("node")]
+            assert any("原始电池诊断" in x for x in text),text
+            print("PASS: Diagnostics")
+            PY
+            test -n "$(adb shell pidof com.example.batterylite | tr -d '\r')"
+      - name: Preserve UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BatteryLite-v1.2-emulator-ui
+          path: |
+            dashboard.xml
+            stats.xml
+            diagnostics.xml
+          if-no-files-found: ignore
+          retention-days: 15
