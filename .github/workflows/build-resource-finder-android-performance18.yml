@@ -1,4 +1,4 @@
-name: Build Resource Finder 1.8 Performance Alpha (private source, free runner)
+name: Build Resource Finder 1.8 TV Stability Alpha2 (private source, free runner)
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: resource-finder-android-tv-home-alpha-gate-performance18
+  group: resource-finder-tv-stability-alpha2
   cancel-in-progress: true
 
 jobs:
@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: bonjourdrs/codex-test
-          ref: resource-finder-1.8-performance
+          ref: 16521efe5e0b3dbfb24c8535ca86a87a5f4c5019
           token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
           path: private-source
           persist-credentials: false
@@ -76,20 +76,20 @@ jobs:
         run: |
           set -euo pipefail
           apk="private-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk"
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep "package: name='com.resourcefinder.standalone' versionCode='180' versionName='1.8.0-alpha1'"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep "package: name='com.resourcefinder.standalone' versionCode='181' versionName='1.8.0-alpha2'"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" | grep -Fi 'Signer #1 certificate SHA-256 digest: 73878e388879a837760bb3c500ff415d0ce54f92cf36b8421557abcf98cfdcf4'
-          cp "$apk" Resource-Finder-v1.8.0-alpha1.apk
-          sha256sum Resource-Finder-v1.8.0-alpha1.apk > Resource-Finder-v1.8.0-alpha1.sha256
+          cp "$apk" Resource-Finder-v1.8.0-alpha2.apk
+          sha256sum Resource-Finder-v1.8.0-alpha2.apk > Resource-Finder-v1.8.0-alpha2.sha256
 
       - name: Upload ONLY APK and checksum (never private checkout or key)
         uses: actions/upload-artifact@v4
         with:
-          name: Resource-Finder-v1.8.0-alpha1-android
+          name: Resource-Finder-v1.8.0-alpha2-android
           path: |
-            Resource-Finder-v1.8.0-alpha1.apk
-            Resource-Finder-v1.8.0-alpha1.sha256
+            Resource-Finder-v1.8.0-alpha2.apk
+            Resource-Finder-v1.8.0-alpha2.sha256
           if-no-files-found: error
           retention-days: 3
 
-# Source revision check: 7f49bf0556b7c25e4b151d023fbe0feb79c74919
-# Build source from the already-private resource-finder-1.8-performance branch.
+# Source revision check: 16521efe5e0b3dbfb24c8535ca86a87a5f4c5019
+# Build source from the exact private TV stability commit.

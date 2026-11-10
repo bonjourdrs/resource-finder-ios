@@ -1,4 +1,4 @@
-name: Validate Resource Finder 1.8 TV remote regression
+name: Validate Resource Finder 1.8 Android TV stability regression
 on:
   push:
     branches: [main]
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: tv-home-remote-validation-performance18
+  group: resource-finder-tv-stability-alpha2
   cancel-in-progress: true
 
 jobs:
@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: bonjourdrs/codex-test
-          ref: resource-finder-1.8-performance
+          ref: 16521efe5e0b3dbfb24c8535ca86a87a5f4c5019
           token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
           path: private-source
           persist-credentials: false
@@ -83,7 +83,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Resource-Finder-1.8-TV-remote-report
+          name: Resource-Finder-1.8-TV-stability-report
           path: |
             private-source/resource_finder/android/app/build/reports/androidTests
             private-source/resource_finder/android/app/build/outputs/androidTest-results
@@ -91,6 +91,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 3
 
-# Source revision check: 7f49bf0556b7c25e4b151d023fbe0feb79c74919
+# Source revision check: 16521efe5e0b3dbfb24c8535ca86a87a5f4c5019
 
-# Source revision check: 7f49bf0556b7c25e4b151d023fbe0feb79c74919
+# Source revision check: 16521efe5e0b3dbfb24c8535ca86a87a5f4c5019
