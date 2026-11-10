@@ -91,5 +91,5 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-# Source revision check: eb1ef9d9d4e1a60ec715845bf100ab1caf831e96
+# Source revision check: 42bd2fdbba14feb8c300f8be96fa952c74e36024
 # Build source from the already-private resource-finder-1.7-manual-skip branch.
