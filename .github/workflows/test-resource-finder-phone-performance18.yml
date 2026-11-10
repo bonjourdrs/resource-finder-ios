@@ -1,0 +1,99 @@
+name: Validate Resource Finder 1.8 Phone and Server
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/test-resource-finder-phone-performance18.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: resource-finder-tv15-phone-server-performance18
+  cancel-in-progress: true
+
+jobs:
+  server:
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout private server sources without exposing credentials
+        uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: resource-finder-1.8-performance
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          sparse-checkout: resource_finder/server
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Server API and provider contracts
+        working-directory: private-source/resource_finder/server
+        run: |
+          python -m pip install -r requirements.txt pytest pytest-asyncio
+          PYTHONPATH=. python -m pytest -q
+  phone-emulator:
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout private Android sources with a read-only token
+        uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: resource-finder-1.8-performance
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          sparse-checkout: |
+            resource_finder/android
+            v1_0/signing/resourcefinder_debug.keystore.b64
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+          cache-disabled: true
+      - name: Restore existing signing key inside ephemeral runner
+        run: |
+          set -euo pipefail
+          umask 077
+          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/rf-existing-signer.keystore"
+          echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/rf-existing-signer.keystore" >> "$GITHUB_ENV"
+      - name: Compile phone and test APKs
+        working-directory: private-source/resource_finder/android
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
+          gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android/sdk/ndk
+      - name: Enable hardware virtualization
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-boot-timeout: 180
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: RF_ANDROID_TEST_NOT_PACKAGE=com.resourcefinder.app.tv bash private-source/resource_finder/android/ci-device-check.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Resource-Finder-1.8-phone-device-tests
+          path: |
+            private-source/resource_finder/android/app/build/reports/androidTests
+            private-source/resource_finder/android/app/build/outputs/androidTest-results
+            private-source/resource_finder/android/app/build/ui-validation
+          retention-days: 3
+
+# Source revision check: bbc47600ea94d04e7ad5f76722cf5d7a0b22a468
