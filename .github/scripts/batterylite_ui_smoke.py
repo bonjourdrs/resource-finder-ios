@@ -37,15 +37,19 @@ def main():
     # Install both variants to prove that the previous signing conflict is gone.
     adb("install","legacy/BatteryLite-OnePlus13-v1.4-stable.apk")
     assert "package:" in adb("shell","pm","path",OLD_PACKAGE)
-    adb("install","batterylite/BatteryLite-OnePlus13-v1.4.1-standalone.apk")
+    adb("install","oldstandalone/BatteryLite-OnePlus13-v1.4.1-standalone.apk")
     assert "package:" in adb("shell","pm","path",PACKAGE)
+    # Same signer and package ID: this must upgrade in place, without uninstalling.
+    adb("install","-r","batterylite/BatteryLite-OnePlus13-v1.5-standalone.apk")
+    assert "package:" in adb("shell","pm","path",PACKAGE)
+    assert "versionCode=7" in adb("shell","dumpsys","package",PACKAGE)
     assert "package:" in adb("shell","pm","path",OLD_PACKAGE), "legacy app must remain installed"
     print(adb("shell","am","start","-W","-n",PACKAGE+"/com.example.batterylite.MainActivity"))
     time.sleep(6)
     assert_alive()
     home=dump("dashboard.xml")
     assert_text(home,"电池仪表 · 诊断版")
-    assert_text(home,"电压")
+    assert_text(home,"SOC 三方对比")
     print("PASS: Dashboard opened")
 
     tap_tab(home,"统计")
@@ -66,7 +70,7 @@ def main():
     assert_text(copied,"即时诊断已复制")
     print("PASS: Diagnostics page and raw battery values opened")
     assert_alive()
-    print("PASS: BatteryLite 1.4.1 coexistence and UI smoke")
+    print("PASS: BatteryLite 1.5 in-place upgrade and OPlus SOC UI smoke")
 
 if __name__=="__main__":
     main()
