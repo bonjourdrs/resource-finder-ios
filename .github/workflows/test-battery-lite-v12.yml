@@ -1,4 +1,4 @@
-name: BatteryLite 1.2 Android 15 UI smoke
+name: BatteryLite 1.3 Android 15 UI smoke
 on:
   push:
     branches: [main]
@@ -18,14 +18,14 @@ jobs:
       - name: Download verified BatteryLite APK
         uses: actions/download-artifact@v4
         with:
-          name: BatteryLite-OnePlus13-v1.2-APK
-          run-id: 42655753901
+          name: BatteryLite-OnePlus13-v1.3-APK
+          run-id: 42728381835
           github-token: ${{ github.token }}
           path: batterylite
       - name: Verify APK checksum
         run: |
           cd batterylite
-          sha256sum -c BatteryLite-OnePlus13-v1.2.apk.sha256
+          sha256sum -c BatteryLite-OnePlus13-v1.3.apk.sha256
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -46,7 +46,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: BatteryLite-v1.2-emulator-ui
+          name: BatteryLite-v1.3-emulator-ui
           path: |
             dashboard.xml
             stats.xml
