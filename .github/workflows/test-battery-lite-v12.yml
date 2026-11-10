@@ -18,14 +18,14 @@ jobs:
       - name: Download verified BatteryLite APK
         uses: actions/download-artifact@v4
         with:
-          name: BatteryLite-OnePlus13-v1.4-APK
-          run-id: 42744418976
+          name: BatteryLite-OnePlus13-v1.4-stable-APK
+          run-id: 42749768843
           github-token: ${{ github.token }}
           path: batterylite
       - name: Verify APK checksum
         run: |
           cd batterylite
-          sha256sum -c BatteryLite-OnePlus13-v1.4.apk.sha256
+          sha256sum -c BatteryLite-OnePlus13-v1.4-stable.apk.sha256
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
