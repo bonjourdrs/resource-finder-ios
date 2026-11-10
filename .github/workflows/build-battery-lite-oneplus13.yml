@@ -1,4 +1,4 @@
-name: Build BatteryLite 1.4 OnePlus 13 APK
+name: Build BatteryLite 1.4 Stable Signed APK
 
 on:
   push:
@@ -44,7 +44,7 @@ jobs:
         run: |
           actual=$(git -C private-source rev-parse HEAD)
           echo "Source revision: $actual"
-          test "$actual" = '4b7a702c76bb3bee91f6060ddb6ed327be137ace'
+          test "$actual" = '9c703ce30f5106f8ec528d38f1cf4e48d3915b4b'
 
       - uses: actions/setup-java@v5
         with:
@@ -60,61 +60,54 @@ jobs:
           gradle-version: '8.9'
           cache-disabled: true
 
-      - name: Require and restore permanent BatteryLite signing key
+      - name: Restore dedicated stable signer from PRIVATE BatteryLite source
         shell: bash
-        env:
-          KEYSTORE_B64: ${{ secrets.BL_SIGNING_KEYSTORE_B64 }}
-          STORE_PASSWORD: ${{ secrets.BL_SIGNING_STORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.BL_SIGNING_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.BL_SIGNING_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          if [ -z "$KEYSTORE_B64" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
-            echo "::error::Permanent BatteryLite signing is NOT configured. Set BL_SIGNING_KEYSTORE_B64, BL_SIGNING_STORE_PASSWORD, BL_SIGNING_KEY_ALIAS and BL_SIGNING_KEY_PASSWORD as GitHub Actions secrets. Refusing to publish another APK with a disposable debug signature."
-            exit 1
-          fi
-          signing_path="$RUNNER_TEMP/batterylite-permanent-signing.jks"
-          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$signing_path"
+          signer="private-source/battery_lite/signing/batterylite_test_signing.p12.b64"
+          pin="private-source/battery_lite/signing/batterylite_test_signing.sha256"
+          test -s "$signer"
+          test -s "$pin"
+          signing_path="$RUNNER_TEMP/batterylite-stable-sideload.p12"
+          base64 --decode "$signer" > "$signing_path"
           chmod 600 "$signing_path"
-          test -s "$signing_path"
-          keytool -list -keystore "$signing_path" -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+          keytool -list -keystore "$signing_path" -storepass android -alias batterylite >/dev/null
           echo "BL_KEYSTORE_PATH=$signing_path" >> "$GITHUB_ENV"
+          echo "BL_SIGNING_STORE_PASSWORD=android" >> "$GITHUB_ENV"
+          echo "BL_SIGNING_KEY_ALIAS=batterylite" >> "$GITHUB_ENV"
+          echo "BL_SIGNING_KEY_PASSWORD=android" >> "$GITHUB_ENV"
           echo "BL_SIGNING_REQUIRED=1" >> "$GITHUB_ENV"
 
       - name: Unit tests and build BatteryLite APK
         working-directory: private-source/battery_lite
-        env:
-          BL_SIGNING_STORE_PASSWORD: ${{ secrets.BL_SIGNING_STORE_PASSWORD }}
-          BL_SIGNING_KEY_ALIAS: ${{ secrets.BL_SIGNING_KEY_ALIAS }}
-          BL_SIGNING_KEY_PASSWORD: ${{ secrets.BL_SIGNING_KEY_PASSWORD }}
         run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug --stacktrace
 
       - name: Verify APK package, version and signature
         shell: bash
         env:
-          EXPECTED_CERT_SHA256: ${{ vars.BL_SIGNING_CERT_SHA256 }}
         run: |
           set -euo pipefail
           apk="private-source/battery_lite/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$apk"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep "package: name='com.example.batterylite' versionCode='5' versionName='1.4'"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/apk-cert.txt"
-          if [ -n "$EXPECTED_CERT_SHA256" ]; then
-            actual=$(sed -nE 's/^Signer #1 certificate SHA-256 digest: (.*)$/\1/p' "$RUNNER_TEMP/apk-cert.txt" | head -1)
-            expected="$EXPECTED_CERT_SHA256"
-            test "${actual,,}" = "${expected,,}" || { echo "::error::Signer fingerprint changed. Refusing APK release."; exit 1; }
+          actual=$(sed -nE 's/^Signer #1 certificate SHA-256 digest:[[:space:]]*(.*)$/\\1/p' "$RUNNER_TEMP/apk-cert.txt" | head -1 | tr 'A-F' 'a-f')
+          expected=$(tr -d '[:space:]' < private-source/battery_lite/signing/batterylite_test_signing.sha256)
+          if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then
+            echo "::error::Signer fingerprint mismatch; refusing to publish APK"
+            exit 1
           fi
-          cp "$apk" BatteryLite-OnePlus13-v1.4.apk
-          sha256sum BatteryLite-OnePlus13-v1.4.apk > BatteryLite-OnePlus13-v1.4.apk.sha256
-          cat BatteryLite-OnePlus13-v1.4.apk.sha256
+          cp "$apk" BatteryLite-OnePlus13-v1.4-stable.apk
+          sha256sum BatteryLite-OnePlus13-v1.4-stable.apk > BatteryLite-OnePlus13-v1.4-stable.apk.sha256
+          cat BatteryLite-OnePlus13-v1.4-stable.apk.sha256
 
       - name: Upload APK and checksum only
         uses: actions/upload-artifact@v4
         with:
-          name: BatteryLite-OnePlus13-v1.4-APK
+          name: BatteryLite-OnePlus13-v1.4-stable-APK
           path: |
-            BatteryLite-OnePlus13-v1.4.apk
-            BatteryLite-OnePlus13-v1.4.apk.sha256
+            BatteryLite-OnePlus13-v1.4-stable.apk
+            BatteryLite-OnePlus13-v1.4-stable.apk.sha256
           if-no-files-found: error
           retention-days: 30
 
