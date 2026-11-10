@@ -91,7 +91,7 @@ jobs:
           test -s "$apk"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep "package: name='com.example.batterylite' versionCode='5' versionName='1.4'"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/apk-cert.txt"
-          actual=$(sed -nE 's/^Signer #1 certificate SHA-256 digest:[[:space:]]*(.*)$/\\1/p' "$RUNNER_TEMP/apk-cert.txt" | head -1 | tr 'A-F' 'a-f')
+          actual=$(grep '^Signer #1 certificate SHA-256 digest:' "$RUNNER_TEMP/apk-cert.txt" | head -n 1 | awk '{print $NF}' | tr 'A-F' 'a-f')
           expected=$(tr -d '[:space:]' < private-source/battery_lite/signing/batterylite_test_signing.sha256)
           if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then
             echo "::error::Signer fingerprint mismatch; refusing to publish APK"
