@@ -44,7 +44,7 @@ jobs:
         run: |
           actual=$(git -C private-source rev-parse HEAD)
           echo "Source revision: $actual"
-          test "$actual" = '567ec2afafc1dfdd9560f82a7aa7e8d7af43a4e8'
+          test "$actual" = '4b7a702c76bb3bee91f6060ddb6ed327be137ace'
 
       - uses: actions/setup-java@v5
         with:
@@ -91,15 +91,17 @@ jobs:
 
       - name: Verify APK package, version and signature
         shell: bash
+        env:
+          EXPECTED_CERT_SHA256: ${{ vars.BL_SIGNING_CERT_SHA256 }}
         run: |
           set -euo pipefail
           apk="private-source/battery_lite/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$apk"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep "package: name='com.example.batterylite' versionCode='5' versionName='1.4'"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/apk-cert.txt"
-          if [ -n "${{ vars.BL_SIGNING_CERT_SHA256 }}" ]; then
+          if [ -n "$EXPECTED_CERT_SHA256" ]; then
             actual=$(sed -nE 's/^Signer #1 certificate SHA-256 digest: (.*)$/\1/p' "$RUNNER_TEMP/apk-cert.txt" | head -1)
-            expected="${{ vars.BL_SIGNING_CERT_SHA256 }}"
+            expected="$EXPECTED_CERT_SHA256"
             test "${actual,,}" = "${expected,,}" || { echo "::error::Signer fingerprint changed. Refusing APK release."; exit 1; }
           fi
           cp "$apk" BatteryLite-OnePlus13-v1.4.apk
