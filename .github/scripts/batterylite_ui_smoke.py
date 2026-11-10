@@ -51,7 +51,8 @@ def main():
     assert_text(home,"电池仪表 · 诊断版")
     assert_text(home,"SOC 三方对比")
     assert_text(home,"Android SOH 属性 ID 10")
-    assert_text(home,"一键复制所有电池证据")
+    # The copy control sits further down in a scroll view; validate the visible
+    # report-copy control on the Diagnostics tab below instead.
     print("PASS: Dashboard opened")
 
     tap_tab(home,"统计")
