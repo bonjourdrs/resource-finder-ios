@@ -5,7 +5,8 @@ import subprocess
 import time
 import xml.etree.ElementTree as ET
 
-PACKAGE="com.example.batterylite"
+PACKAGE="com.example.batterylite.oneplus13"
+OLD_PACKAGE="com.example.batterylite"
 
 def adb(*args):
     return subprocess.run(["adb", *args], check=True, text=True, capture_output=True).stdout
@@ -33,12 +34,17 @@ def assert_alive():
     assert pid, "BatteryLite process terminated unexpectedly"
 
 def main():
-    adb("install","batterylite/BatteryLite-OnePlus13-v1.4-stable.apk")
-    print(adb("shell","am","start","-W","-n",PACKAGE+"/.MainActivity"))
+    # Install both variants to prove that the previous signing conflict is gone.
+    adb("install","legacy/BatteryLite-OnePlus13-v1.4-stable.apk")
+    assert "package:" in adb("shell","pm","path",OLD_PACKAGE)
+    adb("install","batterylite/BatteryLite-OnePlus13-v1.4.1-standalone.apk")
+    assert "package:" in adb("shell","pm","path",PACKAGE)
+    assert "package:" in adb("shell","pm","path",OLD_PACKAGE), "legacy app must remain installed"
+    print(adb("shell","am","start","-W","-n",PACKAGE+"/com.example.batterylite.MainActivity"))
     time.sleep(6)
     assert_alive()
     home=dump("dashboard.xml")
-    assert_text(home,"电池仪表")
+    assert_text(home,"电池仪表 · 诊断版")
     assert_text(home,"电压")
     print("PASS: Dashboard opened")
 
@@ -60,7 +66,7 @@ def main():
     assert_text(copied,"即时诊断已复制")
     print("PASS: Diagnostics page and raw battery values opened")
     assert_alive()
-    print("PASS: BatteryLite 1.4 emulator UI navigation smoke")
+    print("PASS: BatteryLite 1.4.1 coexistence and UI smoke")
 
 if __name__=="__main__":
     main()
