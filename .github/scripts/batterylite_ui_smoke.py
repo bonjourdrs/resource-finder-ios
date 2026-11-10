@@ -33,7 +33,7 @@ def assert_alive():
     assert pid, "BatteryLite process terminated unexpectedly"
 
 def main():
-    adb("install","batterylite/BatteryLite-OnePlus13-v1.4.apk")
+    adb("install","batterylite/BatteryLite-OnePlus13-v1.4-stable.apk")
     print(adb("shell","am","start","-W","-n",PACKAGE+"/.MainActivity"))
     time.sleep(6)
     assert_alive()
