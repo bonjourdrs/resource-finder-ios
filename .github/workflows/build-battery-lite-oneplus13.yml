@@ -44,7 +44,7 @@ jobs:
         run: |
           actual=$(git -C private-source rev-parse HEAD)
           echo "Source revision: $actual"
-          test "$actual" = 'da1163756583e56541da9a0f8eb458dd7ae6a879'
+          test "$actual" = '5ea6825e0e071c519324d761a9d26de281a21743'
 
       - uses: actions/setup-java@v5
         with:
