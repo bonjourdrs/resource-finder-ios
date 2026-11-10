@@ -37,12 +37,12 @@ def main():
     # Install both variants to prove that the previous signing conflict is gone.
     adb("install","legacy/BatteryLite-OnePlus13-v1.4-stable.apk")
     assert "package:" in adb("shell","pm","path",OLD_PACKAGE)
-    adb("install","oldstandalone/BatteryLite-OnePlus13-v1.4.1-standalone.apk")
+    adb("install","oldstandalone/BatteryLite-OnePlus13-v1.5-standalone.apk")
     assert "package:" in adb("shell","pm","path",PACKAGE)
     # Same signer and package ID: this must upgrade in place, without uninstalling.
-    adb("install","-r","batterylite/BatteryLite-OnePlus13-v1.5-standalone.apk")
+    adb("install","-r","batterylite/BatteryLite-OnePlus13-v1.6-standalone.apk")
     assert "package:" in adb("shell","pm","path",PACKAGE)
-    assert "versionCode=7" in adb("shell","dumpsys","package",PACKAGE)
+    assert "versionCode=8" in adb("shell","dumpsys","package",PACKAGE)
     assert "package:" in adb("shell","pm","path",OLD_PACKAGE), "legacy app must remain installed"
     print(adb("shell","am","start","-W","-n",PACKAGE+"/com.example.batterylite.MainActivity"))
     time.sleep(6)
@@ -50,6 +50,8 @@ def main():
     home=dump("dashboard.xml")
     assert_text(home,"电池仪表 · 诊断版")
     assert_text(home,"SOC 三方对比")
+    assert_text(home,"Android SOH 属性 ID 10")
+    assert_text(home,"一键复制所有电池证据")
     print("PASS: Dashboard opened")
 
     tap_tab(home,"统计")
@@ -62,8 +64,9 @@ def main():
     tap_tab(stats,"诊断")
     time.sleep(2)
     diagnostics=dump("diagnostics.xml")
-    assert_text(diagnostics,"一键诊断")
-    tap_tab(diagnostics,"立即生成完整诊断并复制")
+    assert_text(diagnostics,"一键报告")
+    assert_text(diagnostics,"30分钟")
+    tap_tab(diagnostics,"一键复制全部证据报告（推荐）")
     time.sleep(1)
     assert_alive()
     # The clipboard action was invoked and the app is alive; a second
@@ -71,7 +74,7 @@ def main():
     assert_alive()
     print("PASS: Diagnostics page opened, report-copy button invoked, app alive")
     assert_alive()
-    print("PASS: BatteryLite 1.5 in-place upgrade and OPlus SOC UI smoke")
+    print("PASS: BatteryLite 1.6 in-place upgrade, SOH property and full report UI smoke")
 
 if __name__=="__main__":
     main()
