@@ -1,4 +1,4 @@
-name: Build BatteryLite 1.4.1 Standalone Signed APK
+name: Build BatteryLite 1.5 Standalone Signed APK
 
 on:
   push:
@@ -44,7 +44,7 @@ jobs:
         run: |
           actual=$(git -C private-source rev-parse HEAD)
           echo "Source revision: $actual"
-          test "$actual" = '079c634a47802253bdf543cba5046372e09b3c4a'
+          test "$actual" = '918dd2768f12fcbd3522c230f00427b45e79a1fd'
 
       - uses: actions/setup-java@v5
         with:
@@ -88,7 +88,7 @@ jobs:
           set -euo pipefail
           apk="private-source/battery_lite/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$apk"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep "package: name='com.example.batterylite.oneplus13' versionCode='6' versionName='1.4.1'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep "package: name='com.example.batterylite.oneplus13' versionCode='7' versionName='1.5'"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/apk-cert.txt"
           actual=$(grep '^Signer #1 certificate SHA-256 digest:' "$RUNNER_TEMP/apk-cert.txt" | head -n 1 | awk '{print $NF}' | tr 'A-F' 'a-f')
           expected=$(tr -d '[:space:]' < private-source/battery_lite/signing/batterylite_test_signing.sha256)
@@ -96,17 +96,17 @@ jobs:
             echo "::error::Signer fingerprint mismatch; refusing to publish APK"
             exit 1
           fi
-          cp "$apk" BatteryLite-OnePlus13-v1.4.1-standalone.apk
-          sha256sum BatteryLite-OnePlus13-v1.4.1-standalone.apk > BatteryLite-OnePlus13-v1.4.1-standalone.apk.sha256
-          cat BatteryLite-OnePlus13-v1.4.1-standalone.apk.sha256
+          cp "$apk" BatteryLite-OnePlus13-v1.5-standalone.apk
+          sha256sum BatteryLite-OnePlus13-v1.5-standalone.apk > BatteryLite-OnePlus13-v1.5-standalone.apk.sha256
+          cat BatteryLite-OnePlus13-v1.5-standalone.apk.sha256
 
       - name: Upload APK and checksum only
         uses: actions/upload-artifact@v4
         with:
-          name: BatteryLite-OnePlus13-v1.4.1-standalone-APK
+          name: BatteryLite-OnePlus13-v1.5-standalone-APK
           path: |
-            BatteryLite-OnePlus13-v1.4.1-standalone.apk
-            BatteryLite-OnePlus13-v1.4.1-standalone.apk.sha256
+            BatteryLite-OnePlus13-v1.5-standalone.apk
+            BatteryLite-OnePlus13-v1.5-standalone.apk.sha256
           if-no-files-found: error
           retention-days: 30
 
@@ -114,7 +114,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: BatteryLite-OnePlus13-v1.4.1-unit-tests
+          name: BatteryLite-OnePlus13-v1.5-unit-tests
           path: private-source/battery_lite/app/build/test-results/testDebugUnitTest/
           if-no-files-found: ignore
           retention-days: 30
