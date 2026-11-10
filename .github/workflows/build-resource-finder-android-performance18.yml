@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: resource-finder-tv-stability-alpha2
+  group: resource-finder-android-build-tv-stability-alpha2
   cancel-in-progress: true
 
 jobs:
