@@ -91,5 +91,5 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-# Source revision check: 5f5d29ab934b6701abd3ae0b6729762f6cafdb17
+# Source revision check: 7f49bf0556b7c25e4b151d023fbe0feb79c74919
 # Build source from the already-private resource-finder-1.8-performance branch.
