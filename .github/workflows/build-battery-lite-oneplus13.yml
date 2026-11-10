@@ -84,7 +84,6 @@ jobs:
 
       - name: Verify APK package, version and signature
         shell: bash
-        env:
         run: |
           set -euo pipefail
           apk="private-source/battery_lite/app/build/outputs/apk/debug/app-debug.apk"
