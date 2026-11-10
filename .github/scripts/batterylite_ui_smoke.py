@@ -33,7 +33,7 @@ def assert_alive():
     assert pid, "BatteryLite process terminated unexpectedly"
 
 def main():
-    adb("install","batterylite/BatteryLite-OnePlus13-v1.3.apk")
+    adb("install","batterylite/BatteryLite-OnePlus13-v1.4.apk")
     print(adb("shell","am","start","-W","-n",PACKAGE+"/.MainActivity"))
     time.sleep(6)
     assert_alive()
@@ -52,10 +52,15 @@ def main():
     tap_tab(stats,"诊断")
     time.sleep(2)
     diagnostics=dump("diagnostics.xml")
-    assert_text(diagnostics,"原始电池诊断")
+    assert_text(diagnostics,"一键诊断")
+    tap_tab(diagnostics,"立即生成完整诊断并复制")
+    time.sleep(1)
+    assert_alive()
+    copied=dump("diagnostic-copied.xml")
+    assert_text(copied,"即时诊断已复制")
     print("PASS: Diagnostics page and raw battery values opened")
     assert_alive()
-    print("PASS: BatteryLite 1.3 emulator UI navigation smoke")
+    print("PASS: BatteryLite 1.4 emulator UI navigation smoke")
 
 if __name__=="__main__":
     main()
