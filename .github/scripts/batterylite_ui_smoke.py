@@ -37,7 +37,7 @@ def main():
     # Install both variants to prove that the previous signing conflict is gone.
     adb("install","legacy/BatteryLite-OnePlus13-v1.4-stable.apk")
     assert "package:" in adb("shell","pm","path",OLD_PACKAGE)
-    adb("install","oldstandalone/BatteryLite-OnePlus13-v1.7-standalone.apk")
+    adb("install","oldstandalone/BatteryLite-OnePlus13-v1.6-standalone.apk")
     assert "package:" in adb("shell","pm","path",PACKAGE)
     # Same signer and package ID: this must upgrade in place, without uninstalling.
     adb("install","-r","batterylite/BatteryLite-OnePlus13-v1.7-standalone.apk")
