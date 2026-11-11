@@ -22,11 +22,41 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/jp-observation"
-          curl --fail --location --retry 2 --connect-timeout 20 --max-time 140 \
-            --user-agent 'Mozilla/5.0' \
-            'https://get.downkuai.com/download/186113' \
-            --output "$RUNNER_TEMP/jp-observation/jp_tv_main_419.apk"
-          echo 'daee9c80478dd0b9adb43f06940c7d0a  '"$RUNNER_TEMP/jp-observation/jp_tv_main_419.apk" | md5sum -c -
+          # Resolve public mirrors via links on the dated reference page.
+          curl -fLsS --max-time 40 --user-agent 'Mozilla/5.0' 'https://blog.nickys.cn/?p=669' \
+            -o "$RUNNER_TEMP/jp-observation/reference-page.html" || true
+          python3 - <<'PY' > "$RUNNER_TEMP/jp-observation/candidate-urls.txt"
+          from html.parser import HTMLParser
+          from urllib.parse import urljoin
+          from pathlib import Path
+          import os
+          p=Path(os.environ["RUNNER_TEMP"])/"jp-observation/reference-page.html"
+          class A(HTMLParser):
+              def __init__(self): super().__init__();self.hrefs=[]
+              def handle_starttag(self,tag,attrs):
+                  if tag=="a":
+                      href=dict(attrs).get("href","")
+                      if href:self.hrefs.append(href)
+          if p.exists():
+              parser=A();parser.feed(p.read_text(errors="ignore"))
+              for href in parser.hrefs:
+                  if "jp_tv_main_419" in href.lower() or ("jianpian" in href.lower() and ".apk" in href.lower()):
+                      print(urljoin("https://blog.nickys.cn/?p=669",href))
+          print("https://get.downkuai.com/download/186113")
+          print("https://www.jianpian.com/jp_tv_main_419.apk")
+          print("https://jianpian24.com/jp_tv_main_419.apk")
+          PY
+          success=0
+          while IFS= read -r url; do
+            echo "Trying reference URL: $url"
+            if curl --fail --location --connect-timeout 15 --max-time 65 \
+               --user-agent 'Mozilla/5.0' --output "$RUNNER_TEMP/jp-observation/jp_tv_main_419.apk" "$url"; then
+               if echo 'daee9c80478dd0b9adb43f06940c7d0a  '"$RUNNER_TEMP/jp-observation/jp_tv_main_419.apk" | md5sum -c -; then
+                 success=1;break
+               fi
+            fi
+          done < "$RUNNER_TEMP/jp-observation/candidate-urls.txt"
+          test "$success" = 1 || { echo "::error::No mirror returned the verified 4.1.9 reference APK"; exit 1; }
           file "$RUNNER_TEMP/jp-observation/jp_tv_main_419.apk"
           echo "Reference APK matches user uploaded 4.1.9"
       - name: Free disk space
