@@ -78,7 +78,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Jianpian-TV419-emulator-observation
-          path: ${{ runner.temp }}/jp-observation/*.png
+          path: |
+            ${{ runner.temp }}/jp-observation/*.png
             ${{ runner.temp }}/jp-observation/*.xml
             ${{ runner.temp }}/jp-observation/*.txt
           if-no-files-found: warn
