@@ -79,9 +79,15 @@ jobs:
           adb shell settings put system user_rotation 1
           adb install -r -g "$OUT/jp_tv_main_419.apk" | tee "$OUT/install.txt"
           adb shell pm list packages | grep 'com.jp3.xg3' | tee "$OUT/package.txt"
-          adb shell monkey -p com.jp3.xg3 -c android.intent.category.LAUNCHER 1 | tee "$OUT/launch.txt" || true
-          sleep 18
+          adb logcat -c || true
+          adb shell am start -n com.jp3.xg3/.LoaderActivity | tee "$OUT/launch.txt" || true
+          sleep 5
+          adb exec-out screencap -p > "$OUT/00-early.png"
+          adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity|com.jp3.xg3' | head -25 > "$OUT/05sec-activity.txt" || true
+          adb logcat -d -t 5000 -v brief > "$OUT/05sec-full-log.txt" || true
+          sleep 13
           adb exec-out screencap -p > "$OUT/01-initial.png"
+          adb logcat -d -t 6000 -v brief > "$OUT/18sec-full-log.txt" || true
           adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
           adb pull /sdcard/window.xml "$OUT/01-ui.xml" || true
           sleep 30
