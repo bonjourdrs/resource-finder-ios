@@ -73,6 +73,10 @@ jobs:
           set -u
           OUT="$RUNNER_TEMP/jp-observation"
           adb wait-for-device
+          adb shell wm size 1920x1080
+          adb shell wm density 160
+          adb shell settings put system accelerometer_rotation 0
+          adb shell settings put system user_rotation 1
           adb install -r -g "$OUT/jp_tv_main_419.apk" | tee "$OUT/install.txt"
           adb shell pm list packages | grep 'com.jp3.xg3' | tee "$OUT/package.txt"
           adb shell monkey -p com.jp3.xg3 -c android.intent.category.LAUNCHER 1 | tee "$OUT/launch.txt" || true
@@ -103,8 +107,8 @@ jobs:
         with:
           api-level: 30
           arch: x86_64
-          target: android-tv
-          profile: tv_1080p
+          target: google_apis
+          profile: pixel_2
           disable-animations: true
           disk-size: 4096M
           emulator-boot-timeout: 180
