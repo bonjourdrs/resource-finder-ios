@@ -66,6 +66,38 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - name: Prepare isolated screenshot script
+        run: |
+          cat > "$RUNNER_TEMP/jp-observation/capture.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -u
+          OUT="$RUNNER_TEMP/jp-observation"
+          adb wait-for-device
+          adb install -r "$OUT/jp_tv_main_419.apk" | tee "$OUT/install.txt"
+          adb shell pm list packages | grep 'com.jp3.xg3' | tee "$OUT/package.txt"
+          adb shell monkey -p com.jp3.xg3 -c android.intent.category.LAUNCHER 1 | tee "$OUT/launch.txt" || true
+          sleep 18
+          adb exec-out screencap -p > "$OUT/01-initial.png"
+          adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
+          adb pull /sdcard/window.xml "$OUT/01-ui.xml" || true
+          sleep 30
+          adb exec-out screencap -p > "$OUT/02-after-48sec.png"
+          adb shell input keyevent KEYCODE_DPAD_CENTER
+          sleep 8
+          adb exec-out screencap -p > "$OUT/03-confirm.png"
+          adb shell input keyevent KEYCODE_DPAD_RIGHT
+          adb shell input keyevent KEYCODE_DPAD_CENTER
+          sleep 8
+          adb exec-out screencap -p > "$OUT/04-right-confirm.png"
+          adb shell input keyevent KEYCODE_BACK
+          sleep 3
+          adb exec-out screencap -p > "$OUT/05-back.png"
+          adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
+          adb pull /sdcard/window.xml "$OUT/05-ui.xml" || true
+          adb shell dumpsys activity top > "$OUT/activity.txt" || true
+          adb logcat -d -t 1200 -v brief | grep -E 'com.jp3.xg3|RePlugin|AndroidRuntime|FATAL EXCEPTION|Plugin' | tail -250 > "$OUT/runtime-log.txt" || true
+          SH
+          chmod +x "$RUNNER_TEMP/jp-observation/capture.sh"
       - name: Start clean Android TV emulator and capture application screens
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -77,32 +109,7 @@ jobs:
           disk-size: 4096M
           emulator-boot-timeout: 180
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: |
-            set -u
-            OUT="$RUNNER_TEMP/jp-observation"
-            adb install -r "$OUT/jp_tv_main_419.apk" | tee "$OUT/install.txt"
-            adb shell pm list packages | grep 'com.jp3.xg3' | tee "$OUT/package.txt"
-            adb shell monkey -p com.jp3.xg3 -c android.intent.category.LAUNCHER 1 | tee "$OUT/launch.txt"
-            sleep 18
-            adb exec-out screencap -p > "$OUT/01-initial.png"
-            adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
-            adb pull /sdcard/window.xml "$OUT/01-ui.xml" || true
-            sleep 30
-            adb exec-out screencap -p > "$OUT/02-after-48sec.png"
-            adb shell input keyevent KEYCODE_DPAD_CENTER
-            sleep 8
-            adb exec-out screencap -p > "$OUT/03-confirm.png"
-            adb shell input keyevent KEYCODE_DPAD_RIGHT
-            adb shell input keyevent KEYCODE_DPAD_CENTER
-            sleep 8
-            adb exec-out screencap -p > "$OUT/04-right-confirm.png"
-            adb shell input keyevent KEYCODE_BACK
-            sleep 3
-            adb exec-out screencap -p > "$OUT/05-back.png"
-            adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
-            adb pull /sdcard/window.xml "$OUT/05-ui.xml" || true
-            adb shell dumpsys activity top > "$OUT/activity.txt" || true
-            adb logcat -d -t 1200 -v brief | grep -E 'com.jp3.xg3|RePlugin|AndroidRuntime|FATAL EXCEPTION|Plugin' | tail -250 > "$OUT/runtime-log.txt" || true
+          script: bash "$RUNNER_TEMP/jp-observation/capture.sh"
       - name: Upload screenshots and UI evidence only
         if: always()
         uses: actions/upload-artifact@v4
