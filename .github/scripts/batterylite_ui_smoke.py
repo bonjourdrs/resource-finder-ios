@@ -37,12 +37,12 @@ def main():
     # Install both variants to prove that the previous signing conflict is gone.
     adb("install","legacy/BatteryLite-OnePlus13-v1.4-stable.apk")
     assert "package:" in adb("shell","pm","path",OLD_PACKAGE)
-    adb("install","oldstandalone/BatteryLite-OnePlus13-v1.5-standalone.apk")
+    adb("install","oldstandalone/BatteryLite-OnePlus13-v1.7-standalone.apk")
     assert "package:" in adb("shell","pm","path",PACKAGE)
     # Same signer and package ID: this must upgrade in place, without uninstalling.
-    adb("install","-r","batterylite/BatteryLite-OnePlus13-v1.6-standalone.apk")
+    adb("install","-r","batterylite/BatteryLite-OnePlus13-v1.7-standalone.apk")
     assert "package:" in adb("shell","pm","path",PACKAGE)
-    assert "versionCode=8" in adb("shell","dumpsys","package",PACKAGE)
+    assert "versionCode=9" in adb("shell","dumpsys","package",PACKAGE)
     assert "package:" in adb("shell","pm","path",OLD_PACKAGE), "legacy app must remain installed"
     print(adb("shell","am","start","-W","-n",PACKAGE+"/com.example.batterylite.MainActivity"))
     time.sleep(6)
@@ -75,7 +75,7 @@ def main():
     assert_alive()
     print("PASS: Diagnostics page opened, report-copy button invoked, app alive")
     assert_alive()
-    print("PASS: BatteryLite 1.6 in-place upgrade, SOH property and full report UI smoke")
+    print("PASS: BatteryLite 1.7 in-place upgrade, SOH property and full report UI smoke")
 
 if __name__=="__main__":
     main()
