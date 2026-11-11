@@ -1,4 +1,4 @@
-name: BatteryLite 1.6 No-Root One-Tap Evidence Test
+name: BatteryLite 1.7 Charge/Discharge Evidence and Upgrade Test
 on:
   push:
     branches: [main]
@@ -18,21 +18,21 @@ jobs:
       - name: Download verified BatteryLite APK
         uses: actions/download-artifact@v4
         with:
-          name: BatteryLite-OnePlus13-v1.6-standalone-APK
-          run-id: 42766016644
+          name: BatteryLite-OnePlus13-v1.7-standalone-APK
+          run-id: 42958992877
           github-token: ${{ github.token }}
           path: batterylite
       - name: Download previous fixed-signature standalone APK
         uses: actions/download-artifact@v4
         with:
-          name: BatteryLite-OnePlus13-v1.5-standalone-APK
-          run-id: 42758317718
+          name: BatteryLite-OnePlus13-v1.6-standalone-APK
+          run-id: 42766016644
           github-token: ${{ github.token }}
           path: oldstandalone
       - name: Verify previous standalone APK checksum
         run: |
           cd oldstandalone
-          sha256sum -c BatteryLite-OnePlus13-v1.5-standalone.apk.sha256
+          sha256sum -c BatteryLite-OnePlus13-v1.6-standalone.apk.sha256
       - name: Download legacy differently signed BatteryLite APK
         uses: actions/download-artifact@v4
         with:
@@ -47,7 +47,7 @@ jobs:
       - name: Verify APK checksum
         run: |
           cd batterylite
-          sha256sum -c BatteryLite-OnePlus13-v1.6-standalone.apk.sha256
+          sha256sum -c BatteryLite-OnePlus13-v1.7-standalone.apk.sha256
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -68,7 +68,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: BatteryLite-v1.6-upgrade-and-evidence-ui
+          name: BatteryLite-v1.7-upgrade-and-evidence-ui
           path: |
             dashboard.xml
             stats.xml
