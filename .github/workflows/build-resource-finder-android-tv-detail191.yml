@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths: ['.github/workflows/build-resource-finder-android-tv-detail191.yml']
   workflow_dispatch:
+  # One-time automatic kickoff on 2026-11-12 13:55 UTC; remove after the first run.
+  schedule:
+    - cron: '55 13 12 11 *'
 
 permissions:
   contents: read
