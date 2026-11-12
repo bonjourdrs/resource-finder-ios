@@ -1,4 +1,4 @@
-name: Build Resource Finder 1.9.1 TV Detail Alpha (private source, free public runner)
+name: Build and Validate Resource Finder 1.9.1 TV Detail (private source, free public runners)
 
 on:
   push:
@@ -15,7 +15,6 @@ concurrency:
 
 jobs:
   android:
-    # Only the repository owner may run this privileged cross-repository build.
     if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -25,11 +24,11 @@ jobs:
           PRIVATE_READ_TOKEN: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
         run: |
           if [ -z "$PRIVATE_READ_TOKEN" ]; then
-            echo "::error::Missing Actions secret RF_PRIVATE_REPO_READ_TOKEN. The secret must be a fine-grained read-only token scoped only to bonjourdrs/codex-test."
+            echo "::error::Missing Actions secret RF_PRIVATE_REPO_READ_TOKEN (fine-grained read-only access to bonjourdrs/codex-test)."
             exit 1
           fi
 
-      - name: Checkout only the required files from the PRIVATE source
+      - name: Checkout only Android source and signer from PRIVATE repository
         uses: actions/checkout@v4
         with:
           repository: bonjourdrs/codex-test
@@ -43,8 +42,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Record private source revision (SHA only)
-        run: |
-          git -C private-source rev-parse HEAD | tee private-source-commit.txt
+        run: git -C private-source rev-parse HEAD | tee private-source-commit.txt
 
       - uses: actions/setup-java@v5
         with:
@@ -72,7 +70,7 @@ jobs:
         working-directory: private-source/resource_finder/android
         run: gradle --no-daemon :app:assembleDebug --stacktrace
 
-      - name: Verify package, version and original stable signing certificate
+      - name: Verify package, version and original signing certificate
         shell: bash
         run: |
           set -euo pipefail
@@ -83,7 +81,7 @@ jobs:
           sha256sum Resource-Finder-v1.9.1-alpha1.apk > Resource-Finder-v1.9.1-alpha1.sha256
           cat Resource-Finder-v1.9.1-alpha1.sha256
 
-      - name: Upload signed APK before running the test suite
+      - name: Upload signed APK before the test suite
         uses: actions/upload-artifact@v4
         with:
           name: Resource-Finder-v1.9.1-alpha1-android
@@ -98,7 +96,7 @@ jobs:
         working-directory: private-source/resource_finder/android
         run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebugAndroidTest --stacktrace
 
-      - name: Upload JVM and instrumentation test reports
+      - name: Upload Android test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -109,5 +107,166 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-# The private source and signing key are never uploaded. Only the signed APK,
-# checksum, source commit SHA, and test reports are published as artifacts.
+  server:
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout private server sources only
+        uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: resource-finder-1.9.1-tv-detail
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          sparse-checkout: resource_finder/server
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Server API and provider tests
+        working-directory: private-source/resource_finder/server
+        run: |
+          python -m pip install -r requirements.txt pytest pytest-asyncio
+          PYTHONPATH=. python -m pytest -q
+
+  phone-emulator:
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout private Android sources and stable signer
+        uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: resource-finder-1.9.1-tv-detail
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          sparse-checkout: |
+            resource_finder/android
+            v1_0/signing/resourcefinder_debug.keystore.b64
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Android SDK 36
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+          cache-disabled: true
+      - name: Restore original signer inside ephemeral runner
+        run: |
+          set -euo pipefail
+          umask 077
+          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/rf-existing-signer.keystore"
+          echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/rf-existing-signer.keystore" >> "$GITHUB_ENV"
+      - name: Compile phone and instrumentation APKs
+        working-directory: private-source/resource_finder/android
+        run: gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android/sdk/ndk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-boot-timeout: 180
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: RF_ANDROID_TEST_NOT_PACKAGE=com.resourcefinder.app.tv bash private-source/resource_finder/android/ci-device-check.sh
+      - name: Upload phone device reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-v1.9.1-phone-device-tests
+          path: |
+            private-source/resource_finder/android/app/build/reports/androidTests
+            private-source/resource_finder/android/app/build/outputs/androidTest-results
+            private-source/resource_finder/android/app/build/ui-validation
+          if-no-files-found: warn
+          retention-days: 7
+
+  tv-emulator:
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - name: Checkout private Android sources and stable signer
+        uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: resource-finder-1.9.1-tv-detail
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          sparse-checkout: |
+            resource_finder/android
+            v1_0/signing/resourcefinder_debug.keystore.b64
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Android SDK 36
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+          cache-disabled: true
+      - name: Restore original signer inside ephemeral runner
+        run: |
+          set -euo pipefail
+          umask 077
+          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/rf-existing-signer.keystore"
+          echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/rf-existing-signer.keystore" >> "$GITHUB_ENV"
+      - name: Compile TV and instrumentation APKs
+        working-directory: private-source/resource_finder/android
+        run: gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android/sdk/ndk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86
+          target: android-tv
+          profile: tv_1080p
+          disable-animations: true
+          disk-size: 4096M
+          emulator-boot-timeout: 180
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: |
+            RF_ANDROID_TEST_CLASS=com.resourcefinder.app.tv.TvAppDeviceTest bash private-source/resource_finder/android/ci-device-check.sh
+            RF_ANDROID_TEST_CLASS=com.resourcefinder.app.tv.TvSidebarDeviceTest bash private-source/resource_finder/android/ci-device-check.sh
+            RF_ANDROID_TEST_CLASS=com.resourcefinder.app.tv.TvPlayerDeviceTest bash private-source/resource_finder/android/ci-device-check.sh
+            RF_ANDROID_TEST_CLASS=com.resourcefinder.app.tv.TvPhoneInputDeviceTest bash private-source/resource_finder/android/ci-device-check.sh
+      - name: Upload TV device reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-v1.9.1-tv-device-tests
+          path: |
+            private-source/resource_finder/android/app/build/reports/androidTests
+            private-source/resource_finder/android/app/build/outputs/androidTest-results
+            private-source/resource_finder/android/app/build/ui-validation
+          if-no-files-found: warn
+          retention-days: 7
+
+# Private source checkout and signer are ephemeral and never uploaded.
+# Only the signed APK, checksum, source SHA, and test reports become public artifacts.
