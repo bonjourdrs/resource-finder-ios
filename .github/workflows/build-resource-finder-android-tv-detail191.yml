@@ -197,6 +197,7 @@ jobs:
             private-source/resource_finder/android/app/build/reports/androidTests
             private-source/resource_finder/android/app/build/outputs/androidTest-results
             private-source/resource_finder/android/app/build/ui-validation
+            private-source/resource_finder/android/app/build/tv-ci-reports
           if-no-files-found: warn
           retention-days: 7
 
@@ -255,10 +256,26 @@ jobs:
           emulator-boot-timeout: 180
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: |
-            RF_ANDROID_TEST_CLASS=com.resourcefinder.app.tv.TvAppDeviceTest bash private-source/resource_finder/android/ci-device-check.sh
-            RF_ANDROID_TEST_CLASS=com.resourcefinder.app.tv.TvSidebarDeviceTest bash private-source/resource_finder/android/ci-device-check.sh
-            RF_ANDROID_TEST_CLASS=com.resourcefinder.app.tv.TvPlayerDeviceTest bash private-source/resource_finder/android/ci-device-check.sh
-            RF_ANDROID_TEST_CLASS=com.resourcefinder.app.tv.TvPhoneInputDeviceTest bash private-source/resource_finder/android/ci-device-check.sh
+            set +e
+            status=0
+            report_root="private-source/resource_finder/android/app/build/tv-ci-reports"
+            for test_class in \
+              com.resourcefinder.app.tv.TvPhoneInputDeviceTest \
+              com.resourcefinder.app.tv.TvAppDeviceTest \
+              com.resourcefinder.app.tv.TvSidebarDeviceTest \
+              com.resourcefinder.app.tv.TvPlayerDeviceTest; do
+              name="${test_class##*.}"
+              echo "===== TV device test: $test_class ====="
+              RF_ANDROID_TEST_CLASS="$test_class" bash private-source/resource_finder/android/ci-device-check.sh || status=1
+              mkdir -p "$report_root/$name"
+              for report_dir in reports/androidTests outputs/androidTest-results ui-validation; do
+                source_dir="private-source/resource_finder/android/app/build/$report_dir"
+                if [ -d "$source_dir" ]; then
+                  cp -R "$source_dir" "$report_root/$name/"
+                fi
+              done
+            done
+            exit "$status"
       - name: Upload TV device reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -272,5 +289,5 @@ jobs:
           retention-days: 7
 
 # Private source checkout and signer are ephemeral and never uploaded.
-# Current private source revision: 8b9476f62f60fd86dfbe1490f448463d9ecfe060
+# Current private source revision: 6a5edc12301ddc4f7f9f5acf690aaa2144a35ffa
 # Only the signed APK, checksum, source SHA, and test reports become public artifacts.
