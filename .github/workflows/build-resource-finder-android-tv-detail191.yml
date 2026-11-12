@@ -272,4 +272,5 @@ jobs:
           retention-days: 7
 
 # Private source checkout and signer are ephemeral and never uploaded.
+# Current private source revision: 8b9476f62f60fd86dfbe1490f448463d9ecfe060
 # Only the signed APK, checksum, source SHA, and test reports become public artifacts.
