@@ -5,9 +5,6 @@ on:
     branches: [main]
     paths: ['.github/workflows/build-resource-finder-android-tv-detail191.yml']
   workflow_dispatch:
-  # One-time automatic kickoff on 2026-11-12 13:55 UTC; remove after the first run.
-  schedule:
-    - cron: '55 13 12 11 *'
 
 permissions:
   contents: read
@@ -255,27 +252,7 @@ jobs:
           disk-size: 4096M
           emulator-boot-timeout: 180
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: |
-            set +e
-            status=0
-            report_root="private-source/resource_finder/android/app/build/tv-ci-reports"
-            for test_class in \
-              com.resourcefinder.app.tv.TvPhoneInputDeviceTest \
-              com.resourcefinder.app.tv.TvAppDeviceTest \
-              com.resourcefinder.app.tv.TvSidebarDeviceTest \
-              com.resourcefinder.app.tv.TvPlayerDeviceTest; do
-              name="${test_class##*.}"
-              echo "===== TV device test: $test_class ====="
-              RF_ANDROID_TEST_CLASS="$test_class" bash private-source/resource_finder/android/ci-device-check.sh || status=1
-              mkdir -p "$report_root/$name"
-              for report_dir in reports/androidTests outputs/androidTest-results ui-validation; do
-                source_dir="private-source/resource_finder/android/app/build/$report_dir"
-                if [ -d "$source_dir" ]; then
-                  cp -R "$source_dir" "$report_root/$name/"
-                fi
-              done
-            done
-            exit "$status"
+          script: bash private-source/resource_finder/android/ci-tv-test-suite.sh
       - name: Upload TV device reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -285,9 +262,10 @@ jobs:
             private-source/resource_finder/android/app/build/reports/androidTests
             private-source/resource_finder/android/app/build/outputs/androidTest-results
             private-source/resource_finder/android/app/build/ui-validation
+            private-source/resource_finder/android/app/build/tv-ci-reports
           if-no-files-found: warn
           retention-days: 7
 
 # Private source checkout and signer are ephemeral and never uploaded.
-# Current private source revision: 6a5edc12301ddc4f7f9f5acf690aaa2144a35ffa
+# Current private source revision: 0f7b95573081a5f855b69675578d02f532a5b2b9
 # Only the signed APK, checksum, source SHA, and test reports become public artifacts.
