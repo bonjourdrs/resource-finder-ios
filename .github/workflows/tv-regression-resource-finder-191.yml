@@ -1,0 +1,88 @@
+name: Resource Finder 1.9.1 focused TV emulator regression
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/tv-regression-resource-finder-191.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: resource-finder-191-tv-focus-regression
+  cancel-in-progress: true
+
+jobs:
+  tv-emulator:
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - name: Checkout private Android sources and stable signer
+        uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: resource-finder-1.9.1-tv-detail
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          sparse-checkout: |
+            resource_finder/android
+            v1_0/signing/resourcefinder_debug.keystore.b64
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Android SDK 36
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+          cache-disabled: true
+      - name: Restore original signer inside ephemeral runner
+        run: |
+          set -euo pipefail
+          umask 077
+          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/rf-existing-signer.keystore"
+          echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/rf-existing-signer.keystore" >> "$GITHUB_ENV"
+      - name: Compile TV and instrumentation APKs
+        working-directory: private-source/resource_finder/android
+        run: gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android/sdk/ndk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86
+          target: android-tv
+          profile: tv_1080p
+          disable-animations: true
+          disk-size: 4096M
+          emulator-boot-timeout: 180
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash private-source/resource_finder/android/ci-tv-test-suite.sh
+      - name: Upload TV device reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-v1.9.1-tv-device-tests
+          path: |
+            private-source/resource_finder/android/app/build/reports/androidTests
+            private-source/resource_finder/android/app/build/outputs/androidTest-results
+            private-source/resource_finder/android/app/build/ui-validation
+            private-source/resource_finder/android/app/build/tv-ci-reports
+          if-no-files-found: warn
+          retention-days: 7
+
+
+
+# This workflow checks out private source with an existing read-only Actions secret.
+# No source files, credentials or signing key are uploaded as artifacts.
