@@ -266,6 +266,37 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+
+  source-audit:
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout read-only catalog audit sources
+        uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: resource-finder-1.9.1-tv-detail
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          sparse-checkout: resource_finder/android
+          sparse-checkout-cone-mode: false
+      - name: Install Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Probe catalog JSON and one detail entry per MacCMS source (not video playback)
+        run: python private-source/resource_finder/android/scripts/source_catalog_audit.py --timeout 9 --out source-audit
+      - name: Publish catalog health audit, clearly distinct from playable verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-v1.9.1-catalog-audit
+          path: source-audit/
+          retention-days: 7
+          if-no-files-found: warn
+
 # Private source checkout and signer are ephemeral and never uploaded.
-# Current private source revision: 0f7b95573081a5f855b69675578d02f532a5b2b9
+# Current private source revision: c8283c6bda452bed06c0f2e1db20c2893a9e6a28
 # Only the signed APK, checksum, source SHA, and test reports become public artifacts.
