@@ -1,0 +1,157 @@
+name: Validate Resource Finder 1.9.2-dev1 source expansion
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/build-resource-finder-source-expansion192.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rf-source-expansion192
+  cancel-in-progress: true
+
+jobs:
+  android:
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Ensure existing read-only private source credential
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+        run: test -n "$PRIVATE_READ_TOKEN"
+      - name: Checkout pinned private development source
+        uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: 8deed22d0f151782c76818dbd7a4c14d1ed0c5a4
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          sparse-checkout: |
+            resource_finder/android
+            v1_0/signing/resourcefinder_debug.keystore.b64
+          sparse-checkout-cone-mode: false
+      - name: Check source SHA
+        run: |
+          test "$(git -C private-source rev-parse HEAD)" = "8deed22d0f151782c76818dbd7a4c14d1ed0c5a4"
+          git -C private-source rev-parse HEAD | tee private-source-commit.txt
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Android SDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+          cache-disabled: true
+      - name: Restore original sideload signer (ephemeral runner only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/resourcefinder-stable.keystore"
+          echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/resourcefinder-stable.keystore" >> "$GITHUB_ENV"
+      - name: Run unit tests and build APKs
+        working-directory: private-source/resource_finder/android
+        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+      - name: Verify new version and original signing certificate
+        run: |
+          set -euo pipefail
+          apk=private-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep "package: name='com.resourcefinder.standalone' versionCode='193' versionName='1.9.2-dev1'"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" |
+            grep -Fi 'Signer #1 certificate SHA-256 digest: 73878e388879a837760bb3c500ff415d0ce54f92cf36b8421557abcf98cfdcf4'
+          cp "$apk" Resource-Finder-v1.9.2-dev1.apk
+          sha256sum Resource-Finder-v1.9.2-dev1.apk > Resource-Finder-v1.9.2-dev1.sha256
+      - name: Publish dev APK after tests pass
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-v1.9.2-dev1-android
+          path: |
+            Resource-Finder-v1.9.2-dev1.apk
+            Resource-Finder-v1.9.2-dev1.sha256
+            private-source-commit.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve unit test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-v1.9.2-dev1-unit-reports
+          path: private-source/resource_finder/android/app/build/reports/tests/
+          if-no-files-found: warn
+          retention-days: 14
+
+  tv-emulator:
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - name: Checkout pinned private source and stable signer
+        uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: 8deed22d0f151782c76818dbd7a4c14d1ed0c5a4
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          sparse-checkout: |
+            resource_finder/android
+            v1_0/signing/resourcefinder_debug.keystore.b64
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Android SDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+          cache-disabled: true
+      - name: Stable signer in ephemeral runner
+        run: |
+          set -euo pipefail
+          umask 077
+          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/resourcefinder-stable.keystore"
+          echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/resourcefinder-stable.keystore" >> "$GITHUB_ENV"
+      - name: Compile main and Android instrumentation apps
+        working-directory: private-source/resource_finder/android
+        run: gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+      - name: Free disk space and enable KVM
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android/sdk/ndk
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86
+          target: android-tv
+          profile: tv_1080p
+          disable-animations: true
+          disk-size: 4096M
+          emulator-boot-timeout: 180
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash private-source/resource_finder/android/ci-tv-test-suite.sh
+      - name: Upload TV test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-v1.9.2-dev1-tv-test-reports
+          path: |
+            private-source/resource_finder/android/app/build/reports/androidTests
+            private-source/resource_finder/android/app/build/outputs/androidTest-results
+            private-source/resource_finder/android/app/build/ui-validation
+            private-source/resource_finder/android/app/build/tv-ci-reports
+          if-no-files-found: warn
+          retention-days: 14
