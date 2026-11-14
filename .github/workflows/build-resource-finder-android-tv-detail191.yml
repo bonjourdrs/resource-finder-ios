@@ -1,4 +1,4 @@
-name: Build and Validate Resource Finder 1.9.1 TV Detail (private source, free public runners)
+name: Build and Validate Resource Finder 1.9.1-alpha2 TV (private source)
 
 on:
   push:
@@ -75,19 +75,19 @@ jobs:
         run: |
           set -euo pipefail
           apk="private-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk"
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep "package: name='com.resourcefinder.standalone' versionCode='191' versionName='1.9.1-alpha1'"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep "package: name='com.resourcefinder.standalone' versionCode='192' versionName='1.9.1-alpha2'"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" | grep -Fi 'Signer #1 certificate SHA-256 digest: 73878e388879a837760bb3c500ff415d0ce54f92cf36b8421557abcf98cfdcf4'
-          cp "$apk" Resource-Finder-v1.9.1-alpha1.apk
-          sha256sum Resource-Finder-v1.9.1-alpha1.apk > Resource-Finder-v1.9.1-alpha1.sha256
-          cat Resource-Finder-v1.9.1-alpha1.sha256
+          cp "$apk" Resource-Finder-v1.9.1-alpha2.apk
+          sha256sum Resource-Finder-v1.9.1-alpha2.apk > Resource-Finder-v1.9.1-alpha2.sha256
+          cat Resource-Finder-v1.9.1-alpha2.sha256
 
       - name: Upload signed APK before the test suite
         uses: actions/upload-artifact@v4
         with:
-          name: Resource-Finder-v1.9.1-alpha1-android
+          name: Resource-Finder-v1.9.1-alpha2-android
           path: |
-            Resource-Finder-v1.9.1-alpha1.apk
-            Resource-Finder-v1.9.1-alpha1.sha256
+            Resource-Finder-v1.9.1-alpha2.apk
+            Resource-Finder-v1.9.1-alpha2.sha256
             private-source-commit.txt
           if-no-files-found: error
           retention-days: 7
@@ -100,7 +100,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Resource-Finder-v1.9.1-alpha1-android-test-reports
+          name: Resource-Finder-v1.9.1-alpha2-android-test-reports
           path: |
             private-source/resource_finder/android/app/build/reports/tests
             private-source/resource_finder/android/app/build/outputs/androidTest-results
@@ -298,5 +298,5 @@ jobs:
           if-no-files-found: warn
 
 # Private source checkout and signer are ephemeral and never uploaded.
-# Current private source revision: 4c3e9e69879e2e444b27db1696f8b171a03abe0d
+# Current private source revision: 9a1ba1286ff208f6b565d6bc94021304967b48c5
 # Only the signed APK, checksum, source SHA, and test reports become public artifacts.
