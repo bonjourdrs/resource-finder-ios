@@ -298,5 +298,5 @@ jobs:
           if-no-files-found: warn
 
 # Private source checkout and signer are ephemeral and never uploaded.
-# Current private source revision: 5881b13ad36095e8a35aa58e6d5b2b925a790a26
+# Current private source revision: 4c3e9e69879e2e444b27db1696f8b171a03abe0d
 # Only the signed APK, checksum, source SHA, and test reports become public artifacts.
