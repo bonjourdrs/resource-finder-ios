@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: bonjourdrs/codex-test
-          ref: 8deed22d0f151782c76818dbd7a4c14d1ed0c5a4
+          ref: cd76e698f21030e66196173465626625f32bc1ef
           token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
           path: private-source
           persist-credentials: false
@@ -37,7 +37,7 @@ jobs:
           sparse-checkout-cone-mode: false
       - name: Check source SHA
         run: |
-          test "$(git -C private-source rev-parse HEAD)" = "8deed22d0f151782c76818dbd7a4c14d1ed0c5a4"
+          test "$(git -C private-source rev-parse HEAD)" = "cd76e698f21030e66196173465626625f32bc1ef"
           git -C private-source rev-parse HEAD | tee private-source-commit.txt
       - uses: actions/setup-java@v5
         with:
@@ -97,7 +97,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: bonjourdrs/codex-test
-          ref: 8deed22d0f151782c76818dbd7a4c14d1ed0c5a4
+          ref: cd76e698f21030e66196173465626625f32bc1ef
           token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
           path: private-source
           persist-credentials: false
