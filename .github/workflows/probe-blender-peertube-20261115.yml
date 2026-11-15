@@ -59,6 +59,9 @@ jobs:
               (name,"https://video.blender.org/download/videos/"+uuid+"-720.mp4",False),
               (name,"https://video.blender.org/static/webseed/"+uuid+"-720.mp4",False),
             ])
+          for name,uuid in ids.items():
+            jobs.append((name,"https://video.blender.org/object-storage/web_videos/"+uuid+"-720.mp4",False))
+            jobs.append((name,"https://video.blender.org/object-storage/web_videos/"+uuid+"-480.mp4",False))
           jobs.append(("Big Buck Bunny old release", "https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4",False))
           with ThreadPoolExecutor(max_workers=5) as pool:
             futures=[pool.submit(check,*item) for item in jobs]
