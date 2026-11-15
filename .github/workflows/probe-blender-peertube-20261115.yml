@@ -1,0 +1,78 @@
+name: Probe Blender official PeerTube media routes
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/probe-blender-peertube-20261115.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check official PeerTube API and bounded media range requests
+        run: |
+          python - <<'PY'
+          import json, pathlib, urllib.request, urllib.error, urllib.parse
+          from concurrent.futures import ThreadPoolExecutor
+          ids = {
+            "Big Buck Bunny":"bf1f3fb5-b119-4f9f-9930-8e20e892b898",
+            "Sintel":"0eb052d0-fd51-43e6-aa33-ecdbf77a5d40",
+            "Tears of Steel":"8533ea43-4271-4a57-9694-e9d0b35e1aa1",
+            "Spring":"3d95fb3d-c866-42c8-9db1-fe82f48ccb95",
+          }
+          def check(name,url,metadata=False):
+            record={"film":name,"url":url,"metadata":metadata}
+            try:
+              headers={"User-Agent":"ResourceFinder-ReadOnlyAudit/1.0"}
+              if not metadata: headers["Range"]="bytes=0-1023"
+              req=urllib.request.Request(url,headers=headers)
+              with urllib.request.urlopen(req,timeout=10) as response:
+                record["code"]=response.status
+                record["type"]=response.headers.get("Content-Type","")
+                record["final_url"]=urllib.parse.urlsplit(response.geturl())._replace(query="").geturl()
+                if metadata:
+                  root=json.loads(response.read(1024*1024))
+                  record["name"]=root.get("name")
+                  record["files"]=[{
+                    "resolution":a.get("resolution",{}).get("label"),
+                    "url":urllib.parse.urlsplit(a.get("fileUrl",""))._replace(query="").geturl()
+                  } for a in root.get("files",[])]
+                  record["playlists"]=[urllib.parse.urlsplit(a.get("playlistUrl",""))._replace(query="").geturl() for a in root.get("streamingPlaylists",[])]
+                  record["uuid"]=root.get("uuid")
+                else:
+                  record["bytes"]=len(response.read(1024))
+            except Exception as e: record["error"]=str(e)[:220]
+            return record
+          jobs=[]
+          for name,uuid in ids.items():
+            jobs.extend([
+              (name,"https://video.blender.org/api/v1/videos/"+uuid,True),
+              (name,"https://video.blender.org/object-storage/web_videos/"+uuid+"-804.mp4",False),
+              (name,"https://video.blender.org/download/videos/"+uuid+"-720.mp4",False),
+              (name,"https://video.blender.org/static/webseed/"+uuid+"-720.mp4",False),
+            ])
+          jobs.append(("Big Buck Bunny old release", "https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4",False))
+          with ThreadPoolExecutor(max_workers=5) as pool:
+            futures=[pool.submit(check,*item) for item in jobs]
+            results=[x.result() for x in futures]
+          pathlib.Path("probe.json").write_text(json.dumps(results,indent=2))
+          for x in results:
+            print(x["film"],x["url"],x.get("code",x.get("error")),x.get("type",""))
+            if x.get("files"): print("  files:",x["files"])
+            if x.get("playlists"): print("  HLS:",x["playlists"])
+          PY
+      - name: Upload public endpoint probe report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Blender-PeerTube-probe-20261115
+          path: probe.json
+          retention-days: 14
