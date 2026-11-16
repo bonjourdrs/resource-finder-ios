@@ -144,6 +144,8 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: |
             bash private-source/resource_finder/android/ci-tv-test-suite.sh
+            # The instrumentation suite may uninstall its test APK; restore it before am start -W.
+            adb install -r private-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk
             bash private-source/resource_finder/android/ci-cold-start-measure.sh
       - name: Upload TV test reports
         if: always()
