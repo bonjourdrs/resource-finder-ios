@@ -1,0 +1,73 @@
+name: Measure Resource Finder dev5 cold starts
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/measure-resource-finder-dev5-startup.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tv-startup-measure:
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: 9b29fe1268f9bb9fc5e73b540c5da6dacee41dc2
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          sparse-checkout: |
+            resource_finder/android
+            v1_0/signing/resourcefinder_debug.keystore.b64
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Android SDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+          cache-disabled: true
+      - name: Restore signer on ephemeral runner
+        run: |
+          umask 077
+          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/rf-stable.keystore"
+          echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/rf-stable.keystore" >> "$GITHUB_ENV"
+      - name: Build exactly pinned dev5
+        working-directory: private-source/resource_finder/android
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Free disk and enable emulator KVM
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android/sdk/ndk
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86
+          target: android-tv
+          profile: tv_1080p
+          disable-animations: true
+          disk-size: 4096M
+          emulator-boot-timeout: 180
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb install -r private-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk
+            bash private-source/resource_finder/android/ci-cold-start-measure.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Resource-Finder-dev5-tv-cold-start-report
+          path: private-source/resource_finder/android/app/build/tv-ci-reports/cold-activity-start.txt
+          if-no-files-found: warn
+          retention-days: 14
