@@ -59,7 +59,13 @@ jobs:
           echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/resourcefinder-stable.keystore" >> "$GITHUB_ENV"
       - name: Run unit tests and build APKs
         working-directory: private-source/resource_finder/android
-        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace || {
+            echo "::warning::Retrying Gradle once with refreshed dependencies; tests must still pass"
+            sleep 10
+            gradle --no-daemon --refresh-dependencies :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+          }
       - name: Verify new version and original signing certificate
         run: |
           set -euo pipefail
@@ -124,7 +130,13 @@ jobs:
           echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/resourcefinder-stable.keystore" >> "$GITHUB_ENV"
       - name: Compile main and Android instrumentation apps
         working-directory: private-source/resource_finder/android
-        run: gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace || {
+            echo "::warning::Retrying Gradle once with refreshed dependencies; compilation must still pass"
+            sleep 10
+            gradle --no-daemon --refresh-dependencies :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+          }
       - name: Free disk space and enable KVM
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android/sdk/ndk
@@ -196,7 +208,13 @@ jobs:
           echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/rf-existing-signer.keystore" >> "$GITHUB_ENV"
       - name: Compile phone and instrumentation APKs
         working-directory: private-source/resource_finder/android
-        run: gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace || {
+            echo "::warning::Retrying Gradle once with refreshed dependencies; compilation must still pass"
+            sleep 10
+            gradle --no-daemon --refresh-dependencies :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+          }
       - name: Free disk space
         run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android/sdk/ndk
       - name: Enable KVM
