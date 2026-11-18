@@ -1,0 +1,66 @@
+name: Validate Resource Finder dev5 real-device acceptance tooling
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/validate-resource-finder-dev5-real-device-gates.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance-tooling:
+    if: github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Verify preexisting private source read access
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+        run: test -n "$PRIVATE_READ_TOKEN"
+
+      - name: Checkout pinned test-only branch
+        uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: 0f2f04727d178023b954c4d4d5a7ff4d0352fe3e
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: source
+          persist-credentials: false
+          sparse-checkout: |
+            resource_finder/android/scripts/device_beta_acceptance.py
+            resource_finder/android/scripts/test_device_beta_acceptance.py
+            resource_finder/docs/DEV5_REAL_DEVICE_BETA_ACCEPTANCE_20261118.md
+          sparse-checkout-cone-mode: false
+
+      - name: Verify checkout is exactly the reviewed source
+        run: test "$(git -C source rev-parse HEAD)" = "0f2f04727d178023b954c4d4d5a7ff4d0352fe3e"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Compile both scripts
+        run: |
+          python3 -m py_compile \
+            source/resource_finder/android/scripts/device_beta_acceptance.py \
+            source/resource_finder/android/scripts/test_device_beta_acceptance.py
+
+      - name: Run safe-ADB and release-gate unit tests without a device
+        run: |
+          python3 -m unittest discover \
+            -s source/resource_finder/android/scripts \
+            -p test_device_beta_acceptance.py -v
+
+      - name: Assert production identity is pinned
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          script = Path("source/resource_finder/android/scripts/device_beta_acceptance.py").read_text()
+          assert 'PACKAGE = "com.resourcefinder.standalone"' in script
+          assert 'VERSION_CODE = 204' in script
+          assert 'VERSION_NAME = "1.9.3-dev5"' in script
+          assert 'SOURCE_SHA = "89791394c6467dc357d4327f7e9324b8b2225653"' in script
+          print("Release helper pinned to verified dev5 app. No APK published.")
+          PY
