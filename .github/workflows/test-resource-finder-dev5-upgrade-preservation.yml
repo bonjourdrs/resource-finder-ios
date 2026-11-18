@@ -124,11 +124,9 @@ jobs:
           disk-size: 4096M
           emulator-boot-timeout: 180
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: |
-            bash candidate-source/resource_finder/android/ci-upgrade-preservation.sh \
-              old-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk \
-              candidate-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk \
-              candidate-source/resource_finder/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          # android-emulator-runner treats the script as one shell command;
+          # multi-line backslash continuation would drop path arguments.
+          script: bash candidate-source/resource_finder/android/ci-upgrade-preservation.sh old-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk candidate-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk candidate-source/resource_finder/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 
       - name: Preserve upgrade instrumentation reports
         if: always()
