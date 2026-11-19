@@ -1,0 +1,140 @@
+name: Verify Resource Finder dev5 to dev6 completed offline HLS playback
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/test-resource-finder-dev6-offline-upgrade.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rf-dev6-offline-upgrade-verification
+  cancel-in-progress: true
+
+jobs:
+  upgrade-emulator:
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - name: Ensure preexisting read-only private checkout credential
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+        run: test -n "$PRIVATE_READ_TOKEN"
+
+      - name: Checkout pinned dev5 app baseline
+        uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: 89791394c6467dc357d4327f7e9324b8b2225653
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: old-source
+          persist-credentials: false
+          sparse-checkout: |
+            resource_finder/android
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout pinned dev6 plus upgrade regression tests
+        uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: c0004dc910c18b2aa6e650f002d299fc6a277c7e
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: candidate-source
+          persist-credentials: false
+          sparse-checkout: |
+            resource_finder/android
+            v1_0/signing/resourcefinder_debug.keystore.b64
+          sparse-checkout-cone-mode: false
+
+      - name: Pin both versions and prove upgrade direction
+        run: |
+          set -euo pipefail
+          test "$(git -C old-source rev-parse HEAD)" = "89791394c6467dc357d4327f7e9324b8b2225653"
+          test "$(git -C candidate-source rev-parse HEAD)" = "c0004dc910c18b2aa6e650f002d299fc6a277c7e"
+          echo "old=89791394c6467dc357d4327f7e9324b8b2225653"
+          echo "candidate=c0004dc910c18b2aa6e650f002d299fc6a277c7e"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Android SDK 36
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+          cache-disabled: true
+
+      - name: Restore original signer only on ephemeral runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          base64 --decode candidate-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/resourcefinder-stable.keystore"
+          echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/resourcefinder-stable.keystore" >> "$GITHUB_ENV"
+
+      - name: Build signed dev5 original APK
+        run: |
+          set -euo pipefail
+          gradle -p old-source/resource_finder/android --no-daemon :app:assembleDebug --stacktrace || {
+            sleep 10
+            gradle -p old-source/resource_finder/android --no-daemon --refresh-dependencies :app:assembleDebug --stacktrace
+          }
+
+      - name: Build signed dev6 original app and new test package
+        run: |
+          set -euo pipefail
+          gradle -p candidate-source/resource_finder/android --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace || {
+            sleep 10
+            gradle -p candidate-source/resource_finder/android --no-daemon --refresh-dependencies :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+          }
+
+      - name: Verify app identity, versions and matching stable signer
+        run: |
+          set -euo pipefail
+          old=old-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk
+          new=candidate-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$old" | grep "package: name='com.resourcefinder.standalone' versionCode='204' versionName='1.9.3-dev5'"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$new" | grep "package: name='com.resourcefinder.standalone' versionCode='205' versionName='1.9.3-dev6'"
+          for apk in "$old" "$new"; do
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" |
+              grep -Fi 'Signer #1 certificate SHA-256 digest: 73878e388879a837760bb3c500ff415d0ce54f92cf36b8421557abcf98cfdcf4'
+          done
+
+      - name: Free disk space and enable KVM
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android/sdk/ndk
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          disk-size: 4096M
+          emulator-boot-timeout: 180
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          # android-emulator-runner treats the script as one shell command;
+          # multi-line backslash continuation would drop path arguments.
+          script: bash candidate-source/resource_finder/android/ci-upgrade-dev5-to-dev6.sh old-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk candidate-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk candidate-source/resource_finder/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+      - name: Preserve upgrade instrumentation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-dev5-to-dev6-offline-upgrade-report
+          path: |
+            candidate-source/resource_finder/android/app/build/outputs/androidTest-results
+            candidate-source/resource_finder/android/app/build/reports/androidTests
+          if-no-files-found: warn
+          retention-days: 14
