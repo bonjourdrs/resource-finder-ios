@@ -1,0 +1,112 @@
+name: Verify Resource Finder dev5 PlayerModel automatic failover guards
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/verify-resource-finder-dev5-auto-failover-guards.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rf-dev5-auto-failover-guards
+  cancel-in-progress: true
+
+jobs:
+  phone-resilience-emulator:
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - name: Require existing private checkout credential
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+        run: test -n "$PRIVATE_READ_TOKEN"
+
+      - name: Checkout pinned dev5 test-only branch and original signer
+        uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: 0512c0e53a4c87fede13d576c59fa8a85f3212b9
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          sparse-checkout: |
+            resource_finder/android
+            v1_0/signing/resourcefinder_debug.keystore.b64
+          sparse-checkout-cone-mode: false
+
+      - name: Pin source and verify production version is unchanged
+        run: |
+          set -euo pipefail
+          test "$(git -C private-source rev-parse HEAD)" = "0512c0e53a4c87fede13d576c59fa8a85f3212b9"
+          grep -Eq 'versionCode = 204' private-source/resource_finder/android/app/build.gradle.kts
+          grep -Fq 'versionName = "1.9.3-dev5"' private-source/resource_finder/android/app/build.gradle.kts
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Android SDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+          cache-disabled: true
+
+      - name: Restore original APK signing key on ephemeral runner
+        run: |
+          set -euo pipefail
+          umask 077
+          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/resourcefinder-existing.keystore"
+          echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/resourcefinder-existing.keystore" >> "$GITHUB_ENV"
+
+      - name: Compile dev5 app and actual PlayerModel guard instrumentation
+        run: |
+          set -euo pipefail
+          gradle -p private-source/resource_finder/android --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace || {
+            sleep 10
+            gradle -p private-source/resource_finder/android --no-daemon --refresh-dependencies :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+          }
+
+      - name: Confirm stable package and signing certificate
+        run: |
+          set -euo pipefail
+          apk=private-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep "package: name='com.resourcefinder.standalone' versionCode='204' versionName='1.9.3-dev5'"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" |
+            grep -Fi 'Signer #1 certificate SHA-256 digest: 73878e388879a837760bb3c500ff415d0ce54f92cf36b8421557abcf98cfdcf4'
+
+      - name: Free disk space and enable KVM
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android/sdk/ndk
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          disk-size: 4096M
+          emulator-boot-timeout: 180
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: RF_ANDROID_TEST_CLASS=com.resourcefinder.app.media.AutoFailoverGuardDeviceTest bash private-source/resource_finder/android/ci-device-check.sh
+
+      - name: Preserve PlayerModel automatic failover guard results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-v1.9.3-dev5-auto-failover-guard-reports
+          path: |
+            private-source/resource_finder/android/app/build/reports/androidTests
+            private-source/resource_finder/android/app/build/outputs/androidTest-results
+          if-no-files-found: warn
+          retention-days: 14
