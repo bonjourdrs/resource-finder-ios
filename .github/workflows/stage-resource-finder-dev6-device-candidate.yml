@@ -1,0 +1,102 @@
+name: Stage signed Resource Finder 1.9.3-dev6 device-test candidate
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stage-resource-finder-dev6-device-candidate.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rf-stage-dev6-test-candidate
+  cancel-in-progress: true
+
+jobs:
+  signed-test-candidate:
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Require existing private source credential
+        env:
+          PRIVATE_READ_TOKEN: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+        run: test -n "$PRIVATE_READ_TOKEN"
+
+      - name: Checkout immutable CI-qualified dev6 source
+        uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: 0b440bf3ad46a31faa3538f06425deddf0ff828e
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          sparse-checkout: |
+            resource_finder/android
+            v1_0/signing/resourcefinder_debug.keystore.b64
+          sparse-checkout-cone-mode: false
+
+      - name: Validate pinned source
+        run: |
+          set -euo pipefail
+          test "$(git -C private-source rev-parse HEAD)" = "0b440bf3ad46a31faa3538f06425deddf0ff828e"
+          printf '%s\n' 'Resource Finder v1.9.3-dev6' 'Test-only signed device candidate; NOT a Beta or release' \
+            'Commit: 0b440bf3ad46a31faa3538f06425deddf0ff828e' \
+            'Full CI: https://github.com/bonjourdrs/resource-finder-ios/actions/runs/44470978583' \
+            'Auto failover CI: https://github.com/bonjourdrs/resource-finder-ios/actions/runs/44469217099' \
+            'In-place dev5-to-dev6 upgrade CI: https://github.com/bonjourdrs/resource-finder-ios/actions/runs/44476861699' \
+            > BUILD_PROVENANCE.txt
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Android SDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+          cache-disabled: true
+
+      - name: Restore original sideload signer on ephemeral runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/resourcefinder-original.keystore"
+          echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/resourcefinder-original.keystore" >> "$GITHUB_ENV"
+
+      - name: Run unit tests and compile signed dev6 APK
+        run: |
+          set -euo pipefail
+          gradle -p private-source/resource_finder/android --no-daemon :app:testDebugUnitTest :app:assembleDebug --stacktrace || {
+            echo "::warning::Retrying Gradle after dependency transient; tests still required to pass"
+            sleep 12
+            gradle -p private-source/resource_finder/android --no-daemon :app:testDebugUnitTest :app:assembleDebug --stacktrace
+          }
+
+      - name: Verify package, upgrade code and unchanged signing certificate
+        run: |
+          set -euo pipefail
+          apk=private-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" |
+            grep -F "package: name='com.resourcefinder.standalone' versionCode='205' versionName='1.9.3-dev6'"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" |
+            grep -Fi 'Signer #1 certificate SHA-256 digest: 73878e388879a837760bb3c500ff415d0ce54f92cf36b8421557abcf98cfdcf4'
+          cp "$apk" Resource-Finder-v1.9.3-dev6-device-test.apk
+          sha256sum Resource-Finder-v1.9.3-dev6-device-test.apk > Resource-Finder-v1.9.3-dev6-device-test.sha256
+
+      - name: Upload APK for controlled real-device testing only
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-v1.9.3-dev6-device-test-candidate
+          path: |
+            Resource-Finder-v1.9.3-dev6-device-test.apk
+            Resource-Finder-v1.9.3-dev6-device-test.sha256
+            BUILD_PROVENANCE.txt
+          if-no-files-found: error
+          retention-days: 14
