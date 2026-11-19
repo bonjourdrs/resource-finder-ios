@@ -1,0 +1,118 @@
+name: Package Resource Finder dev6 real-device QA kit (not a release)
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/package-resource-finder-dev6-real-device-kit.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rf-dev6-real-device-qa-kit
+  cancel-in-progress: true
+
+jobs:
+  windows-script-check:
+    if: github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: 956fa2b73f8ea879ee85f0c63db2a10d775577ae
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: acceptance
+          persist-credentials: false
+          sparse-checkout: |
+            resource_finder/android/scripts/Start-ResourceFinder-DeviceTest.ps1
+            resource_finder/android/scripts/device_beta_acceptance.py
+            resource_finder/android/scripts/test_device_beta_acceptance.py
+          sparse-checkout-cone-mode: false
+      - name: Verify acceptance scripts source commit
+        shell: pwsh
+        run: |
+          if ((git -C acceptance rev-parse HEAD).Trim() -ne '956fa2b73f8ea879ee85f0c63db2a10d775577ae') { throw 'Unexpected source revision' }
+      - name: PowerShell syntax and offline safety self-test
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File acceptance/resource_finder/android/scripts/Start-ResourceFinder-DeviceTest.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw 'PowerShell validation failed' }
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Test manual report helper (no Android hardware)
+        shell: pwsh
+        run: |
+          python -m unittest discover -s acceptance/resource_finder/android/scripts -p test_device_beta_acceptance.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'Device acceptance unit tests failed' }
+
+  bundle-verified-apk:
+    needs: windows-script-check
+    if: github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: 956fa2b73f8ea879ee85f0c63db2a10d775577ae
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: acceptance
+          persist-credentials: false
+          sparse-checkout: |
+            resource_finder/android/scripts/Start-ResourceFinder-DeviceTest.ps1
+            resource_finder/android/scripts/device_beta_acceptance.py
+            resource_finder/android/scripts/test_device_beta_acceptance.py
+            resource_finder/android/scripts/START-HERE.txt
+          sparse-checkout-cone-mode: false
+
+      - name: Download exact signed, already-verified APK (no rebuild, no publishing)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git -C acceptance rev-parse HEAD)" = '956fa2b73f8ea879ee85f0c63db2a10d775577ae'
+          mkdir -p staging
+          gh run download 44478188591 --repo bonjourdrs/resource-finder-ios --name Resource-Finder-v1.9.3-dev6-device-test-candidate --dir staging
+          test -s staging/Resource-Finder-v1.9.3-dev6-device-test.apk
+          test -s staging/Resource-Finder-v1.9.3-dev6-device-test.sha256
+          grep -Fq '0b440bf3ad46a31faa3538f06425deddf0ff828e' staging/BUILD_PROVENANCE.txt
+          (cd staging && sha256sum -c Resource-Finder-v1.9.3-dev6-device-test.sha256)
+
+      - name: Verify APK version and the ORIGINAL signer again
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;36.0.0'
+          apk=staging/Resource-Finder-v1.9.3-dev6-device-test.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" |
+            grep -F "package: name='com.resourcefinder.standalone' versionCode='205' versionName='1.9.3-dev6'"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" |
+            grep -Fi 'Signer #1 certificate SHA-256 digest: 73878e388879a837760bb3c500ff415d0ce54f92cf36b8421557abcf98cfdcf4'
+
+      - name: Assemble simple Windows phone/TV test kit
+        run: |
+          set -euo pipefail
+          mkdir -p qa-kit
+          cp staging/Resource-Finder-v1.9.3-dev6-device-test.apk qa-kit/
+          cp staging/Resource-Finder-v1.9.3-dev6-device-test.sha256 qa-kit/
+          cp staging/BUILD_PROVENANCE.txt qa-kit/
+          cp acceptance/resource_finder/android/scripts/Start-ResourceFinder-DeviceTest.ps1 qa-kit/
+          cp acceptance/resource_finder/android/scripts/device_beta_acceptance.py qa-kit/
+          cp acceptance/resource_finder/android/scripts/test_device_beta_acceptance.py qa-kit/
+          cp acceptance/resource_finder/android/scripts/START-HERE.txt qa-kit/
+          test "$(find qa-kit -maxdepth 1 -type f | wc -l)" -eq 7
+          (cd qa-kit && sha256sum -c Resource-Finder-v1.9.3-dev6-device-test.sha256)
+          echo 'Artifact is only for controlled physical-device QA, NOT a Beta or production release.'
+          ls -lh qa-kit
+
+      - name: Upload verified real-device kit as ONE zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-v1.9.3-dev6-real-device-QA-kit
+          path: qa-kit/
+          if-no-files-found: error
+          retention-days: 30
