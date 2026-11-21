@@ -19,7 +19,6 @@ env:
 
 jobs:
   phone-full-regression:
-    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     steps:
@@ -132,7 +131,6 @@ jobs:
           retention-days: 14
 
   tv-full-regression:
-    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     steps:
