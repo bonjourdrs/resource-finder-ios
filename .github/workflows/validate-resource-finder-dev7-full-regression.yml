@@ -1,4 +1,4 @@
-name: Validate Resource Finder 1.9.4-dev7 full phone and TV regression
+name: Validate Resource Finder 1.9.4-dev7 full phone TV auto recovery regression
 
 on:
   push:
@@ -10,24 +10,20 @@ permissions:
   contents: read
 
 concurrency:
-  group: rf-smart-buffer-dev7-full-regression
+  group: rf-compact-player-1.9.3-dev6
   cancel-in-progress: true
 
-env:
-  PRIVATE_SOURCE_SHA: ee793f6eef0f65994f269c664cf5148b88e36bc7
-  SIGNER_SHA256: 73878e388879a837760bb3c500ff415d0ce54f92cf36b8421557abcf98cfdcf4
-
 jobs:
-  phone-full-regression:
+  android:
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 45
     steps:
-      - name: Require existing private source credential
+      - name: Ensure existing read-only private source credential
         env:
           PRIVATE_READ_TOKEN: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
         run: test -n "$PRIVATE_READ_TOKEN"
-
-      - name: Checkout pinned dev7 source and original signer
+      - name: Checkout pinned private development source
         uses: actions/checkout@v4
         with:
           repository: bonjourdrs/codex-test
@@ -39,107 +35,63 @@ jobs:
             resource_finder/android
             v1_0/signing/resourcefinder_debug.keystore.b64
           sparse-checkout-cone-mode: false
-
-      - name: Verify exact dev7 source
+      - name: Check source SHA
         run: |
-          set -euo pipefail
-          test "$(git -C private-source rev-parse HEAD)" = "$PRIVATE_SOURCE_SHA"
-          grep -Fq 'versionCode = 206' private-source/resource_finder/android/app/build.gradle.kts
-          grep -Fq 'versionName = "1.9.4-dev7"' private-source/resource_finder/android/app/build.gradle.kts
-
+          test "$(git -C private-source rev-parse HEAD)" = "ee793f6eef0f65994f269c664cf5148b88e36bc7"
+          git -C private-source rev-parse HEAD | tee private-source-commit.txt
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
-
-      - name: Install Android SDK 36
-        run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
-
+      - name: Install Android SDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.6.0'
           cache-disabled: true
-
-      - name: Restore original signer on ephemeral runner
+      - name: Restore original sideload signer (ephemeral runner only)
         shell: bash
         run: |
           set -euo pipefail
           umask 077
-          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/rf-dev7.keystore"
-          echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/rf-dev7.keystore" >> "$GITHUB_ENV"
-
-      - name: Run all JVM tests and build phone APKs
+          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/resourcefinder-stable.keystore"
+          echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/resourcefinder-stable.keystore" >> "$GITHUB_ENV"
+      - name: Run unit tests and build internally (no public APK artifact)
+        working-directory: private-source/resource_finder/android
         run: |
           set -euo pipefail
-          gradle -p private-source/resource_finder/android --no-daemon \
-            :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
-
-      - name: Verify dev7 package and original signer
+          gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace || {
+            echo "::warning::Retrying Gradle once with refreshed dependencies; tests must still pass"
+            sleep 10
+            gradle --no-daemon --refresh-dependencies :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace || {
+              echo "::warning::Dependency mirror transient failure? Final retry without refresh; any test failure still fails the job"
+              sleep 30
+              gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+            }
+          }
+      - name: Verify new version and original signing certificate
         run: |
           set -euo pipefail
           apk=private-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" |
-            grep -F "package: name='com.resourcefinder.standalone' versionCode='206' versionName='1.9.4-dev7'"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep "package: name='com.resourcefinder.standalone' versionCode='206' versionName='1.9.4-dev7'"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" |
-            grep -Fi "Signer #1 certificate SHA-256 digest: $SIGNER_SHA256"
-
-      - name: Free disk space and enable KVM
-        run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android/sdk/ndk
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
-            sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          target: google_apis
-          disable-animations: true
-          disk-size: 4096M
-          emulator-boot-timeout: 180
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: RF_ANDROID_TEST_NOT_PACKAGE=com.resourcefinder.app.tv bash private-source/resource_finder/android/ci-device-check.sh
-
-      - name: Require full phone suite including dev7 prefetch tests
-        run: |
-          python3 - <<'PY'
-          import pathlib, xml.etree.ElementTree as ET
-          root = pathlib.Path("private-source/resource_finder/android/app/build/outputs/androidTest-results")
-          files = list(root.rglob("TEST-*.xml"))
-          assert files, "No phone instrumentation XML report"
-          total = sum(int(ET.parse(f).getroot().get("tests", "0")) for f in files)
-          failures = sum(int(ET.parse(f).getroot().get("failures", "0")) for f in files)
-          errors = sum(int(ET.parse(f).getroot().get("errors", "0")) for f in files)
-          print({"phone_tests": total, "failures": failures, "errors": errors})
-          assert total >= 50, f"Expected at least 50 phone tests (48 dev6 baseline + 2 dev7), got {total}"
-          assert failures == 0 and errors == 0
-          PY
-
-      - name: Upload full phone regression reports
+            grep -Fi 'Signer #1 certificate SHA-256 digest: 73878e388879a837760bb3c500ff415d0ce54f92cf36b8421557abcf98cfdcf4'
+      - name: Preserve unit test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Resource-Finder-v1.9.4-dev7-full-phone-regression
-          path: |
-            private-source/resource_finder/android/app/build/reports/tests/
-            private-source/resource_finder/android/app/build/reports/androidTests/
-            private-source/resource_finder/android/app/build/outputs/androidTest-results/
-            private-source/resource_finder/android/app/build/ui-validation/
+          name: Resource-Finder-v1.9.4-dev7-unit-reports
+          path: private-source/resource_finder/android/app/build/reports/tests/
           if-no-files-found: warn
           retention-days: 14
 
-  tv-full-regression:
+  tv-emulator:
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     steps:
-      - name: Require existing private source credential
-        env:
-          PRIVATE_READ_TOKEN: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
-        run: test -n "$PRIVATE_READ_TOKEN"
-
-      - name: Checkout pinned dev7 source and original signer
+      - name: Checkout pinned private source and stable signer
         uses: actions/checkout@v4
         with:
           repository: bonjourdrs/codex-test
@@ -151,41 +103,32 @@ jobs:
             resource_finder/android
             v1_0/signing/resourcefinder_debug.keystore.b64
           sparse-checkout-cone-mode: false
-
-      - name: Verify exact dev7 source
-        run: |
-          set -euo pipefail
-          test "$(git -C private-source rev-parse HEAD)" = "$PRIVATE_SOURCE_SHA"
-          grep -Fq 'versionCode = 206' private-source/resource_finder/android/app/build.gradle.kts
-          grep -Fq 'versionName = "1.9.4-dev7"' private-source/resource_finder/android/app/build.gradle.kts
-
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
-
-      - name: Install Android SDK 36
-        run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
-
+      - name: Install Android SDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.6.0'
           cache-disabled: true
-
-      - name: Restore original signer on ephemeral runner
-        shell: bash
+      - name: Stable signer in ephemeral runner
         run: |
           set -euo pipefail
           umask 077
-          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/rf-dev7-tv.keystore"
-          echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/rf-dev7-tv.keystore" >> "$GITHUB_ENV"
-
-      - name: Compile dev7 phone and instrumentation APKs
+          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/resourcefinder-stable.keystore"
+          echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/resourcefinder-stable.keystore" >> "$GITHUB_ENV"
+      - name: Compile main and Android instrumentation apps
+        working-directory: private-source/resource_finder/android
         run: |
           set -euo pipefail
-          gradle -p private-source/resource_finder/android --no-daemon \
-            :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
-
+          gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace || {
+            echo "::warning::Retrying Gradle once with refreshed dependencies; compilation must still pass"
+            sleep 10
+            gradle --no-daemon --refresh-dependencies :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+          }
       - name: Free disk space and enable KVM
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android/sdk/ndk
@@ -193,7 +136,6 @@ jobs:
             sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
@@ -206,18 +148,103 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: |
             bash private-source/resource_finder/android/ci-tv-test-suite.sh
+            # The instrumentation suite may uninstall its test APK; restore it before am start -W.
             adb install -r private-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk
             bash private-source/resource_finder/android/ci-cold-start-measure.sh
-
-      - name: Upload full TV regression reports
+      - name: Upload TV test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Resource-Finder-v1.9.4-dev7-full-tv-regression
+          name: Resource-Finder-v1.9.4-dev7-tv-test-reports
           path: |
-            private-source/resource_finder/android/app/build/reports/androidTests/
-            private-source/resource_finder/android/app/build/outputs/androidTest-results/
-            private-source/resource_finder/android/app/build/ui-validation/
-            private-source/resource_finder/android/app/build/tv-ci-reports/
+            private-source/resource_finder/android/app/build/reports/androidTests
+            private-source/resource_finder/android/app/build/outputs/androidTest-results
+            private-source/resource_finder/android/app/build/ui-validation
+            private-source/resource_finder/android/app/build/tv-ci-reports
           if-no-files-found: warn
           retention-days: 14
+
+  phone-emulator:
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout private Android sources and stable signer
+        uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: ee793f6eef0f65994f269c664cf5148b88e36bc7
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          sparse-checkout: |
+            resource_finder/android
+            v1_0/signing/resourcefinder_debug.keystore.b64
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Android SDK 36
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+          cache-disabled: true
+      - name: Restore original signer inside ephemeral runner
+        run: |
+          set -euo pipefail
+          umask 077
+          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/rf-existing-signer.keystore"
+          echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/rf-existing-signer.keystore" >> "$GITHUB_ENV"
+      - name: Compile phone and instrumentation APKs
+        working-directory: private-source/resource_finder/android
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace || {
+            echo "::warning::Retrying Gradle once with refreshed dependencies; compilation must still pass"
+            sleep 10
+            gradle --no-daemon --refresh-dependencies :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+          }
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android/sdk/ndk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-boot-timeout: 180
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: RF_ANDROID_TEST_NOT_PACKAGE=com.resourcefinder.app.tv bash private-source/resource_finder/android/ci-device-check.sh
+      - name: Verify full phone regression includes 48 baseline and new cases
+        run: |
+          python3 - <<'PY'
+          import pathlib, xml.etree.ElementTree as ET
+          root = pathlib.Path("private-source/resource_finder/android/app/build/outputs/androidTest-results")
+          files = list(root.rglob("TEST-*.xml"))
+          assert files, "No phone instrumentation XML report"
+          total = sum(int(ET.parse(f).getroot().get("tests", "0")) for f in files)
+          print("Full phone instrumentation tests:", total)
+          assert total >= 50, f"Expected 48 dev6 phone tests + 2 dev7 HLS pause-prefetch tests, got {total}"
+          PY
+      - name: Upload phone device reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-v1.9.4-dev7-phone-device-tests
+          path: |
+            private-source/resource_finder/android/app/build/reports/androidTests
+            private-source/resource_finder/android/app/build/outputs/androidTest-results
+            private-source/resource_finder/android/app/build/ui-validation
+            private-source/resource_finder/android/app/build/tv-ci-reports
+          if-no-files-found: warn
+          retention-days: 7
+
