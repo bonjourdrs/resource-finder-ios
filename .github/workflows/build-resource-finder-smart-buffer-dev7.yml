@@ -21,7 +21,7 @@ jobs:
     steps:
       - name: Require existing private source checkout credential
         env:
-          PRIVATE_READ_TOKEN: \${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          PRIVATE_READ_TOKEN: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
         run: test -n "$PRIVATE_READ_TOKEN"
 
       - name: Checkout isolated Smart Buffer development branch and original signer
@@ -29,7 +29,7 @@ jobs:
         with:
           repository: bonjourdrs/codex-test
           ref: 7b1a7db40ceed0b6a16ff1e733e6a0cd29b7282d
-          token: \${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          token: ${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
           path: private-source
           persist-credentials: false
           sparse-checkout: |
