@@ -1,0 +1,140 @@
+name: Validate Resource Finder 1.9.4-dev7 Smart Buffer and pause HLS prefetch
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/build-resource-finder-smart-buffer-dev7.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rf-smart-buffer-dev7
+  cancel-in-progress: true
+
+jobs:
+  android-smart-buffer:
+    if: github.actor == 'bonjourdrs' && github.repository == 'bonjourdrs/resource-finder-ios' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Require existing private source checkout credential
+        env:
+          PRIVATE_READ_TOKEN: \${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+        run: test -n "$PRIVATE_READ_TOKEN"
+
+      - name: Checkout isolated Smart Buffer development branch and original signer
+        uses: actions/checkout@v4
+        with:
+          repository: bonjourdrs/codex-test
+          ref: 7b1a7db40ceed0b6a16ff1e733e6a0cd29b7282d
+          token: \${{ secrets.RF_PRIVATE_REPO_READ_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          sparse-checkout: |
+            resource_finder/android
+            v1_0/signing/resourcefinder_debug.keystore.b64
+          sparse-checkout-cone-mode: false
+
+      - name: Verify immutable dev7 source and version
+        run: |
+          set -euo pipefail
+          test "$(git -C private-source rev-parse HEAD)" = "7b1a7db40ceed0b6a16ff1e733e6a0cd29b7282d"
+          grep -Eq 'versionCode = 206' private-source/resource_finder/android/app/build.gradle.kts
+          grep -Fq 'versionName = "1.9.4-dev7"' private-source/resource_finder/android/app/build.gradle.kts
+          printf '%s\n' \
+            'Resource Finder 1.9.4-dev7 Smart Buffer development candidate' \
+            'Not a Beta or production release' \
+            'Source commit: 7b1a7db40ceed0b6a16ff1e733e6a0cd29b7282d' \
+            'Base: dev6 0b440bf3ad46a31faa3538f06425deddf0ff828e' \
+            > BUILD_PROVENANCE.txt
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Android SDK 36
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+          cache-disabled: true
+
+      - name: Restore original sideload signing key on ephemeral runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          base64 --decode private-source/v1_0/signing/resourcefinder_debug.keystore.b64 > "$RUNNER_TEMP/resourcefinder-original.keystore"
+          echo "RF_KEYSTORE_PATH=$RUNNER_TEMP/resourcefinder-original.keystore" >> "$GITHUB_ENV"
+
+      - name: Run all unit tests and build signed dev7 APK plus instrumentation APK
+        run: |
+          set -euo pipefail
+          gradle -p private-source/resource_finder/android --no-daemon \
+            :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace || {
+              echo "::warning::Retrying once after a possible dependency mirror transient"
+              sleep 12
+              gradle -p private-source/resource_finder/android --no-daemon --refresh-dependencies \
+                :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+            }
+
+      - name: Verify package, version and original signing certificate
+        run: |
+          set -euo pipefail
+          apk=private-source/resource_finder/android/app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" |
+            grep -F "package: name='com.resourcefinder.standalone' versionCode='206' versionName='1.9.4-dev7'"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" |
+            grep -Fi 'Signer #1 certificate SHA-256 digest: 73878e388879a837760bb3c500ff415d0ce54f92cf36b8421557abcf98cfdcf4'
+          cp "$apk" Resource-Finder-v1.9.4-dev7-smart-buffer.apk
+          sha256sum Resource-Finder-v1.9.4-dev7-smart-buffer.apk > Resource-Finder-v1.9.4-dev7-smart-buffer.sha256
+          sha256sum -c Resource-Finder-v1.9.4-dev7-smart-buffer.sha256
+
+      - name: Free disk space and enable KVM
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android/sdk/ndk
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          df -h /
+
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          disk-size: 4096M
+          emulator-boot-timeout: 180
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: RF_ANDROID_TEST_CLASS=com.resourcefinder.app.media.HlsPausePrefetchDeviceTest bash private-source/resource_finder/android/ci-device-check.sh
+
+      - name: Preserve unit and emulator test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-v1.9.4-dev7-smart-buffer-test-reports
+          path: |
+            private-source/resource_finder/android/app/build/reports/tests/
+            private-source/resource_finder/android/app/build/reports/androidTests/
+            private-source/resource_finder/android/app/build/outputs/androidTest-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish signed dev7 APK only after all tests pass
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resource-Finder-v1.9.4-dev7-smart-buffer-candidate
+          path: |
+            Resource-Finder-v1.9.4-dev7-smart-buffer.apk
+            Resource-Finder-v1.9.4-dev7-smart-buffer.sha256
+            BUILD_PROVENANCE.txt
+          if-no-files-found: error
+          retention-days: 14
